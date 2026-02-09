@@ -3,118 +3,122 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Patrick's Mobile Drive</title>
+    <title>Patrick's Univer Drive</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
-    <link rel='stylesheet' href='https://cdn.jsdelivr.net/npm/luckysheet/dist/plugins/css/pluginsCss.css' />
-    <link rel='stylesheet' href='https://cdn.jsdelivr.net/npm/luckysheet/dist/plugins/plugins.css' />
-    <link rel='stylesheet' href='https://cdn.jsdelivr.net/npm/luckysheet/dist/css/luckysheet.css' />
-    <link rel='stylesheet' href='https://cdn.jsdelivr.net/npm/luckysheet/dist/assets/iconfont/iconfont.css' />
-    <script src="https://cdn.jsdelivr.net/npm/luckysheet/dist/plugins/js/plugin.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/luckysheet/dist/luckysheet.umd.js"></script>
+
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@univerjs/design/lib/index.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@univerjs/ui/lib/index.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@univerjs/docs-ui/lib/index.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@univerjs/sheets-ui/lib/index.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@univerjs/sheets-numfmt/lib/index.css">
+
+    <script src="https://cdn.jsdelivr.net/npm/@univerjs/core/lib/univer-core.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@univerjs/design/lib/univer-design.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@univerjs/engine-render/lib/univer-engine-render.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@univerjs/engine-formula/lib/univer-engine-formula.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@univerjs/ui/lib/univer-ui.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@univerjs/docs/lib/univer-docs.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@univerjs/docs-ui/lib/univer-docs-ui.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@univerjs/sheets/lib/univer-sheets.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@univerjs/sheets-ui/lib/univer-sheets-ui.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@univerjs/sheets-numfmt/lib/univer-sheets-numfmt.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@univerjs/sheets-formula/lib/univer-sheets-formula.umd.js"></script>
 
     <style>
-        :root { --sidebar-width: 280px; --gh-dark: #24292e; --active-blue: #0969da; }
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; font-family: sans-serif; }
+        :root { --sidebar-width: 280px; --gh-dark: #1f2328; --active-blue: #0969da; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; font-family: -apple-system, system-ui, sans-serif; }
         
-        /* Header Optimization */
-        #header { 
-            height: 50px; background: var(--gh-dark); color: white; 
-            display: flex; align-items: center; padding: 0 10px; gap: 8px; z-index: 1000; position: relative;
-        }
-        #header input { background: #3f4448; border: 1px solid #444d56; color: white; padding: 6px; border-radius: 4px; width: 100px; flex-grow: 1; font-size: 14px; }
+        #header { height: 50px; background: var(--gh-dark); color: white; display: flex; align-items: center; padding: 0 10px; gap: 10px; z-index: 1000; }
+        #header input { background: #2d333b; border: 1px solid #444c56; color: white; padding: 6px; border-radius: 6px; width: 120px; flex-grow: 1; font-size: 14px;}
         
-        /* Mobile Toggle Button */
-        #menu-toggle { background: none; border: none; color: white; font-size: 24px; cursor: pointer; padding: 0 5px; }
-
-        /* Layout */
+        #menu-toggle { background: none; border: none; color: white; font-size: 22px; cursor: pointer; }
         #main-container { display: flex; height: calc(100% - 50px); width: 100%; position: relative; }
         
-        /* Sidebar / Drawer Logic */
         #sidebar { 
             width: var(--sidebar-width); background: #f6f8fa; border-right: 1px solid #d0d7de; 
             display: flex; flex-direction: column; position: absolute; height: 100%; z-index: 999;
-            transition: transform 0.3s ease; left: 0;
+            transition: transform 0.25s ease; left: 0;
         }
         #sidebar.collapsed { transform: translateX(-100%); }
-
-        #file-list-header { padding: 15px; border-bottom: 1px solid #d0d7de; display: flex; justify-content: space-between; align-items: center; font-weight: bold; }
+        #file-list-header { padding: 15px; border-bottom: 1px solid #d0d7de; display: flex; justify-content: space-between; align-items: center; font-weight: bold; background: #fff; }
         #file-list { flex: 1; overflow-y: auto; list-style: none; margin: 0; padding: 0; }
-        .file-item { padding: 12px 15px; border-bottom: 1px solid #e1e4e8; cursor: pointer; display: flex; flex-direction: column; gap: 8px; }
-        .file-item.active { border-left: 4px solid var(--active-blue); background: #fff; }
-        .file-ops { display: flex; gap: 5px; }
-
-        /* Spreadsheet Area */
-        #luckysheet { flex: 1; height: 100%; width: 100%; position: absolute !important; left: 0; top: 0; }
         
-        /* Utility */
-        .btn { padding: 6px 10px; border-radius: 4px; border: none; font-weight: 600; cursor: pointer; font-size: 12px; }
-        .btn-mini { padding: 4px 8px; font-size: 11px; background: #eee; border: 1px solid #ccc; border-radius: 3px; }
-        #status { font-size: 10px; color: #8b949e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60px; }
+        .file-item { padding: 12px 15px; border-bottom: 1px solid #e1e4e8; cursor: pointer; background: #f6f8fa; border-left: 4px solid transparent; }
+        .file-item:hover { background: #ebf0f4; }
+        .file-item.active { border-left: 4px solid var(--active-blue); background: #fff; }
+        .file-ops { display: flex; gap: 6px; margin-top: 8px; }
 
-        @media (min-width: 768px) {
-            #sidebar { position: relative; transform: none !important; }
-            #luckysheet { position: relative !important; }
-            #header input { width: 200px; flex-grow: 0; }
-            #status { max-width: none; font-size: 12px; }
-            #menu-toggle { display: none; }
-        }
+        #univer-container { flex: 1; height: 100%; width: 100%; position: relative; background: #fff; }
+        
+        .btn { padding: 6px 12px; border-radius: 6px; border: none; font-weight: 600; cursor: pointer; font-size: 13px; }
+        .btn-mini { padding: 4px 8px; font-size: 11px; background: #fff; border: 1px solid #d0d7de; border-radius: 4px; }
+        #status { font-size: 11px; color: #8b949e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100px; }
+
+        @media (min-width: 768px) { #sidebar { position: relative; transform: none !important; } #header input { width: 200px; flex-grow: 0; } #menu-toggle { display: none; } }
     </style>
 </head>
 <body>
 
 <div id="header">
     <button id="menu-toggle" onclick="toggleSidebar()">☰</button>
-    <input type="password" id="token" placeholder="Token">
-    <button class="btn" style="background:#2ea44f; color:white;" onclick="connectAndRefresh()">🔄</button>
+    <input type="password" id="token" placeholder="GitHub Token">
+    <button class="btn" style="background:#2ea44f; color:white;" onclick="connectAndRefresh()">🔄 Sync</button>
     <button class="btn" style="background:#0969da; color:white;" onclick="saveCurrentFile()">💾 Save</button>
-    <span id="status">...</span>
+    <span id="status">Ready</span>
 </div>
 
 <div id="main-container">
     <div id="sidebar" class="collapsed">
         <div id="file-list-header">
-            <span>Files</span>
+            <span>Drive</span>
             <button onclick="createNewFile()" class="btn-mini" style="background:#2ea44f; color:white; border:none;">＋ New</button>
         </div>
         <ul id="file-list"></ul>
     </div>
-    <div id="luckysheet"></div>
+    <div id="univer-container"></div>
 </div>
 
 <script>
     const REPO = "patrickwoolf/my-online-drive";
     let currentFileName = null;
     let currentSha = null;
+    let univer = null;
+    let workbook = null;
 
-    function toggleSidebar() {
-        document.getElementById('sidebar').classList.toggle('collapsed');
-        // Force Luckysheet to resize when sidebar moves
-        setTimeout(() => { luckysheet.resize(); }, 350);
-    }
+    function toggleSidebar() { document.getElementById('sidebar').classList.toggle('collapsed'); }
 
     window.onload = () => {
         const saved = localStorage.getItem('gh_token');
-        if (saved) { 
-            document.getElementById('token').value = saved; 
-            connectAndRefresh(); 
-        }
-        initBlankSheet();
+        if (saved) { document.getElementById('token').value = saved; connectAndRefresh(); }
+        initUniver();
     };
 
-    function initBlankSheet() {
-        luckysheet.create({ 
-            container: 'luckysheet', 
-            lang: 'en', 
-            showinfobar: false,
-            // Hide non-essential toolbar items for mobile
-            showtoolbarConfig: {
-                chart: false,
-                postil: false,
-                pivotTable: false,
-                image: false
-            }
-        });
+    function initUniver(data = null) {
+        // Clean up previous instance
+        if (univer) univer.dispose();
+        document.getElementById('univer-container').innerHTML = '';
+
+        univer = UniverCore.Univer.new();
+        
+        // Use UMD globals for plugins
+        univer.registerPlugin(UniverDesign.UniverDesignPlugin);
+        univer.registerPlugin(UniverEngineRender.UniverRenderEnginePlugin);
+        univer.registerPlugin(UniverUi.UniverUIPlugin, { container: 'univer-container' });
+        univer.registerPlugin(UniverDocs.UniverDocsPlugin);
+        univer.registerPlugin(UniverDocsUi.UniverDocsUIPlugin);
+        univer.registerPlugin(UniverSheets.UniverSheetsPlugin);
+        univer.registerPlugin(UniverSheetsUi.UniverSheetsUIPlugin);
+        univer.registerPlugin(UniverEngineFormula.UniverFormulaEnginePlugin);
+        univer.registerPlugin(UniverSheetsFormula.UniverSheetsFormulaPlugin);
+
+        // Load data or create a blank sheet
+        const sheetData = data || {
+            id: 'workbook-01',
+            sheets: { 'sheet-01': { name: 'Sheet1', id: 'sheet-01' } }
+        };
+        
+        workbook = univer.createUniverSheet(sheetData);
     }
 
     async function ghApi(path, method = 'GET', body = null) {
@@ -125,15 +129,14 @@
         };
         if (body) options.body = JSON.stringify(body);
         const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, options);
-        if (!res.ok) throw new Error("GitHub Error: " + res.status);
+        if (!res.ok) throw new Error("API Error: " + res.status);
         return res.json();
     }
 
     async function connectAndRefresh() {
         const token = document.getElementById('token').value;
-        if (!token) return alert("Enter Token!");
+        if (!token) return;
         localStorage.setItem('gh_token', token);
-        document.getElementById('status').innerText = "Sync...";
         try {
             const data = await ghApi(`?t=${Date.now()}`);
             const files = data.filter(f => f.name.endsWith('.json'));
@@ -143,11 +146,11 @@
                 const li = document.createElement('li');
                 li.className = `file-item ${currentFileName === file.name ? 'active' : ''}`;
                 li.innerHTML = `
-                    <div onclick="loadFile('${file.name}')" style="font-weight:bold">📄 ${file.name}</div>
+                    <div onclick="loadFile('${file.name}')" style="font-weight:600">📄 ${file.name}</div>
                     <div class="file-ops">
                         <button class="btn-mini" onclick="renameFile('${file.name}')">Ren</button>
                         <button class="btn-mini" onclick="copyFile('${file.name}')">Copy</button>
-                        <button class="btn-mini" style="color:red" onclick="deleteFile('${file.name}', '${file.sha}')">Del</button>
+                        <button class="btn-mini" style="color:#cf222e" onclick="deleteFile('${file.name}', '${file.sha}')">Del</button>
                     </div>
                 `;
                 listEl.appendChild(li);
@@ -157,39 +160,44 @@
     }
 
     async function loadFile(name) {
-        if (window.innerWidth < 768) toggleSidebar(); // Close drawer on mobile
+        if (window.innerWidth < 768) toggleSidebar();
         document.getElementById('status').innerText = `Loading...`;
         try {
             const file = await ghApi(`${name}?t=${Date.now()}`);
             currentFileName = name;
             currentSha = file.sha;
+            
             const binaryString = atob(file.content);
             const binData = new Uint8Array(binaryString.split('').map(x => x.charCodeAt(0)));
             let jsonData;
-            try { jsonData = JSON.parse(pako.ungzip(binData, { to: 'string' })); }
-            catch (err) { jsonData = JSON.parse(decodeURIComponent(escape(binaryString))); }
+            
+            try { 
+                jsonData = JSON.parse(pako.ungzip(binData, { to: 'string' })); 
+            } catch (err) { 
+                // Fallback and minimal conversion for Univer
+                const raw = JSON.parse(decodeURIComponent(escape(binaryString)));
+                // Simple adapter: Luckysheet to Univer is complex, 
+                // but Univer can often read standard JSON if structured correctly.
+                jsonData = raw; 
+            }
 
-            luckysheet.destroy();
-            luckysheet.create({ 
-                container: 'luckysheet', 
-                data: jsonData, 
-                title: name,
-                showtoolbarConfig: { chart: false, postil: false, image: false }
-            });
+            initUniver(jsonData);
             document.getElementById('status').innerText = name;
+            connectAndRefresh(); 
         } catch (e) { alert("Load Failed: " + e.message); }
     }
 
     async function saveCurrentFile() {
-        if (!currentFileName) return alert("No file open!");
+        if (!currentFileName || !workbook) return alert("Open a file first!");
         document.getElementById('status').innerText = "Saving...";
         try {
-            const data = luckysheet.getAllSheets();
+            // Univer uses getSaveData() for serializing
+            const data = workbook.save();
             const compressed = pako.gzip(JSON.stringify(data));
             const content = btoa(String.fromCharCode.apply(null, compressed));
-            const res = await ghApi(currentFileName, 'PUT', { message: `Mobile Save`, content, sha: currentSha });
+            const res = await ghApi(currentFileName, 'PUT', { message: "Univer Cloud Save", content, sha: currentSha });
             currentSha = res.content.sha;
-            document.getElementById('status').innerText = "Saved!";
+            document.getElementById('status').innerText = "🚀 Saved";
         } catch (e) { alert("Save failed: " + e.message); }
     }
 
@@ -197,7 +205,8 @@
         let name = prompt("Name:");
         if (!name) return;
         if (!name.endsWith('.json')) name += '.json';
-        const compressed = pako.gzip(JSON.stringify([{ "name": "Sheet1", "celldata": [], "status": 1 }]));
+        const defaultData = { id: Date.now().toString(), sheets: { 'sheet-01': { name: 'Sheet1', id: 'sheet-01' } } };
+        const compressed = pako.gzip(JSON.stringify(defaultData));
         await ghApi(name, 'PUT', { message: `Create`, content: btoa(String.fromCharCode.apply(null, compressed)) });
         connectAndRefresh();
     }
@@ -205,7 +214,6 @@
     async function renameFile(oldName) {
         let newName = prompt("New name:", oldName);
         if (!newName || newName === oldName) return;
-        if (!newName.endsWith('.json')) newName += '.json';
         const fileData = await ghApi(oldName);
         await ghApi(newName, 'PUT', { message: `Rename`, content: fileData.content });
         await ghApi(oldName, 'DELETE', { message: `Cleanup`, sha: fileData.sha });
@@ -221,8 +229,9 @@
     }
 
     async function deleteFile(name, sha) {
-        if (!confirm(`Delete?`)) return;
+        if (!confirm(`Delete ${name}?`)) return;
         await ghApi(name, 'DELETE', { message: `Delete`, sha });
+        if (currentFileName === name) location.reload();
         connectAndRefresh();
     }
 </script>
