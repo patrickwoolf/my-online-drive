@@ -3,27 +3,12 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Patrick's Univer Drive</title>
+    <title>Patrick's Pro Drive</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
 
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@univerjs/design/lib/index.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@univerjs/ui/lib/index.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@univerjs/docs-ui/lib/index.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@univerjs/sheets-ui/lib/index.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@univerjs/sheets-numfmt/lib/index.css">
-
-    <script src="https://cdn.jsdelivr.net/npm/@univerjs/core/lib/univer-core.umd.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@univerjs/design/lib/univer-design.umd.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@univerjs/engine-render/lib/univer-engine-render.umd.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@univerjs/engine-formula/lib/univer-engine-formula.umd.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@univerjs/ui/lib/univer-ui.umd.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@univerjs/docs/lib/univer-docs.umd.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@univerjs/docs-ui/lib/univer-docs-ui.umd.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@univerjs/sheets/lib/univer-sheets.umd.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@univerjs/sheets-ui/lib/univer-sheets-ui.umd.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@univerjs/sheets-numfmt/lib/univer-sheets-numfmt.umd.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@univerjs/sheets-formula/lib/univer-sheets-formula.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/handsontable/dist/handsontable.full.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/handsontable/dist/handsontable.full.min.css">
 
     <style>
         :root { --sidebar-width: 280px; --gh-dark: #1f2328; --active-blue: #0969da; }
@@ -41,21 +26,25 @@
             transition: transform 0.25s ease; left: 0;
         }
         #sidebar.collapsed { transform: translateX(-100%); }
+
         #file-list-header { padding: 15px; border-bottom: 1px solid #d0d7de; display: flex; justify-content: space-between; align-items: center; font-weight: bold; background: #fff; }
         #file-list { flex: 1; overflow-y: auto; list-style: none; margin: 0; padding: 0; }
-        
         .file-item { padding: 12px 15px; border-bottom: 1px solid #e1e4e8; cursor: pointer; background: #f6f8fa; border-left: 4px solid transparent; }
         .file-item:hover { background: #ebf0f4; }
         .file-item.active { border-left: 4px solid var(--active-blue); background: #fff; }
-        .file-ops { display: flex; gap: 6px; margin-top: 8px; }
-
-        #univer-container { flex: 1; height: 100%; width: 100%; position: relative; background: #fff; }
         
-        .btn { padding: 6px 12px; border-radius: 6px; border: none; font-weight: 600; cursor: pointer; font-size: 13px; }
+        /* Spreadsheet Container */
+        #grid-container { flex: 1; height: 100%; width: 100%; position: relative; overflow: hidden; }
+        
+        .btn { padding: 6px 12px; border-radius: 4px; border: none; font-weight: 600; cursor: pointer; font-size: 13px; }
         .btn-mini { padding: 4px 8px; font-size: 11px; background: #fff; border: 1px solid #d0d7de; border-radius: 4px; }
         #status { font-size: 11px; color: #8b949e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100px; }
 
-        @media (min-width: 768px) { #sidebar { position: relative; transform: none !important; } #header input { width: 200px; flex-grow: 0; } #menu-toggle { display: none; } }
+        @media (min-width: 768px) {
+            #sidebar { position: relative; transform: none !important; }
+            #header input { width: 200px; flex-grow: 0; }
+            #menu-toggle { display: none; }
+        }
     </style>
 </head>
 <body>
@@ -65,78 +54,75 @@
     <input type="password" id="token" placeholder="GitHub Token">
     <button class="btn" style="background:#2ea44f; color:white;" onclick="connectAndRefresh()">🔄 Sync</button>
     <button class="btn" style="background:#0969da; color:white;" onclick="saveCurrentFile()">💾 Save</button>
-    <span id="status">Ready</span>
+    <span id="status">Offline</span>
 </div>
 
 <div id="main-container">
     <div id="sidebar" class="collapsed">
         <div id="file-list-header">
-            <span>Drive</span>
+            <span>My Files</span>
             <button onclick="createNewFile()" class="btn-mini" style="background:#2ea44f; color:white; border:none;">＋ New</button>
         </div>
         <ul id="file-list"></ul>
     </div>
-    <div id="univer-container"></div>
+    <div id="grid-container"></div>
 </div>
 
 <script>
     const REPO = "patrickwoolf/my-online-drive";
     let currentFileName = null;
     let currentSha = null;
-    let univer = null;
-    let workbook = null;
+    let hotInstance = null;
 
     function toggleSidebar() { document.getElementById('sidebar').classList.toggle('collapsed'); }
 
     window.onload = () => {
         const saved = localStorage.getItem('gh_token');
-        if (saved) { document.getElementById('token').value = saved; connectAndRefresh(); }
-        initUniver();
+        if (saved) { 
+            document.getElementById('token').value = saved; 
+            connectAndRefresh(); 
+        }
+        initGrid([["", "", ""], ["", "", ""]]); // Initial empty grid
     };
 
-    function initUniver(data = null) {
-        // Clean up previous instance
-        if (univer) univer.dispose();
-        document.getElementById('univer-container').innerHTML = '';
-
-        univer = UniverCore.Univer.new();
+    function initGrid(data) {
+        if (hotInstance) hotInstance.destroy();
+        const container = document.getElementById('grid-container');
         
-        // Use UMD globals for plugins
-        univer.registerPlugin(UniverDesign.UniverDesignPlugin);
-        univer.registerPlugin(UniverEngineRender.UniverRenderEnginePlugin);
-        univer.registerPlugin(UniverUi.UniverUIPlugin, { container: 'univer-container' });
-        univer.registerPlugin(UniverDocs.UniverDocsPlugin);
-        univer.registerPlugin(UniverDocsUi.UniverDocsUIPlugin);
-        univer.registerPlugin(UniverSheets.UniverSheetsPlugin);
-        univer.registerPlugin(UniverSheetsUi.UniverSheetsUIPlugin);
-        univer.registerPlugin(UniverEngineFormula.UniverFormulaEnginePlugin);
-        univer.registerPlugin(UniverSheetsFormula.UniverSheetsFormulaPlugin);
-
-        // Load data or create a blank sheet
-        const sheetData = data || {
-            id: 'workbook-01',
-            sheets: { 'sheet-01': { name: 'Sheet1', id: 'sheet-01' } }
-        };
-        
-        workbook = univer.createUniverSheet(sheetData);
+        hotInstance = new Handsontable(container, {
+            data: data,
+            rowHeaders: true,
+            colHeaders: true,
+            width: '100%',
+            height: '100%',
+            contextMenu: true,
+            manualColumnResize: true,
+            manualRowResize: true,
+            licenseKey: 'non-commercial-and-evaluation' 
+        });
     }
 
     async function ghApi(path, method = 'GET', body = null) {
         const token = document.getElementById('token').value;
         const options = {
             method,
-            headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json' }
+            headers: { 
+                'Authorization': `token ${token}`,
+                'Accept': 'application/vnd.github+json',
+                'Content-Type': 'application/json' 
+            }
         };
         if (body) options.body = JSON.stringify(body);
         const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, options);
-        if (!res.ok) throw new Error("API Error: " + res.status);
+        if (!res.ok) throw new Error("GitHub API Error: " + res.status);
         return res.json();
     }
 
     async function connectAndRefresh() {
         const token = document.getElementById('token').value;
-        if (!token) return;
+        if (!token) return alert("Enter Token!");
         localStorage.setItem('gh_token', token);
+        document.getElementById('status').innerText = "Syncing...";
         try {
             const data = await ghApi(`?t=${Date.now()}`);
             const files = data.filter(f => f.name.endsWith('.json'));
@@ -174,28 +160,29 @@
             try { 
                 jsonData = JSON.parse(pako.ungzip(binData, { to: 'string' })); 
             } catch (err) { 
-                // Fallback and minimal conversion for Univer
-                const raw = JSON.parse(decodeURIComponent(escape(binaryString)));
-                // Simple adapter: Luckysheet to Univer is complex, 
-                // but Univer can often read standard JSON if structured correctly.
-                jsonData = raw; 
+                jsonData = JSON.parse(decodeURIComponent(escape(binaryString))); 
             }
 
-            initUniver(jsonData);
+            // Handsontable expects an array of arrays
+            initGrid(jsonData);
             document.getElementById('status').innerText = name;
-            connectAndRefresh(); 
+            connectAndRefresh();
         } catch (e) { alert("Load Failed: " + e.message); }
     }
 
     async function saveCurrentFile() {
-        if (!currentFileName || !workbook) return alert("Open a file first!");
+        if (!currentFileName || !hotInstance) return alert("Open a file first!");
         document.getElementById('status').innerText = "Saving...";
         try {
-            // Univer uses getSaveData() for serializing
-            const data = workbook.save();
+            const data = hotInstance.getData();
             const compressed = pako.gzip(JSON.stringify(data));
             const content = btoa(String.fromCharCode.apply(null, compressed));
-            const res = await ghApi(currentFileName, 'PUT', { message: "Univer Cloud Save", content, sha: currentSha });
+
+            const res = await ghApi(currentFileName, 'PUT', {
+                message: "Handsontable Save",
+                content,
+                sha: currentSha
+            });
             currentSha = res.content.sha;
             document.getElementById('status').innerText = "🚀 Saved";
         } catch (e) { alert("Save failed: " + e.message); }
@@ -205,9 +192,9 @@
         let name = prompt("Name:");
         if (!name) return;
         if (!name.endsWith('.json')) name += '.json';
-        const defaultData = { id: Date.now().toString(), sheets: { 'sheet-01': { name: 'Sheet1', id: 'sheet-01' } } };
-        const compressed = pako.gzip(JSON.stringify(defaultData));
-        await ghApi(name, 'PUT', { message: `Create`, content: btoa(String.fromCharCode.apply(null, compressed)) });
+        const emptyData = [["", "", ""], ["", "", ""]];
+        const compressed = pako.gzip(JSON.stringify(emptyData));
+        await ghApi(name, 'PUT', { message: "Create", content: btoa(String.fromCharCode.apply(null, compressed)) });
         connectAndRefresh();
     }
 
@@ -215,8 +202,8 @@
         let newName = prompt("New name:", oldName);
         if (!newName || newName === oldName) return;
         const fileData = await ghApi(oldName);
-        await ghApi(newName, 'PUT', { message: `Rename`, content: fileData.content });
-        await ghApi(oldName, 'DELETE', { message: `Cleanup`, sha: fileData.sha });
+        await ghApi(newName, 'PUT', { message: "Rename", content: fileData.content });
+        await ghApi(oldName, 'DELETE', { message: "Cleanup", sha: fileData.sha });
         connectAndRefresh();
     }
 
@@ -224,14 +211,13 @@
         let newName = prompt("Copy name:", "Copy_" + sourceName);
         if (!newName) return;
         const fileData = await ghApi(sourceName);
-        await ghApi(newName, 'PUT', { message: `Copy`, content: fileData.content });
+        await ghApi(newName, 'PUT', { message: "Copy", content: fileData.content });
         connectAndRefresh();
     }
 
     async function deleteFile(name, sha) {
         if (!confirm(`Delete ${name}?`)) return;
-        await ghApi(name, 'DELETE', { message: `Delete`, sha });
-        if (currentFileName === name) location.reload();
+        await ghApi(name, 'DELETE', { message: "Delete", sha });
         connectAndRefresh();
     }
 </script>
