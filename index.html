@@ -106,26 +106,39 @@
                 location.reload();
             }
         }
-
+        
         async function loadFromGithub() {
             const token = document.getElementById('token').value;
+            const status = document.getElementById('status');
+        
             if (!token) return alert("Please enter your GitHub Token!");
             
             localStorage.setItem('gh_token', token);
-            updateStatus("⏳ Fetching data...");
-
+            status.innerText = "⏳ Connecting...";
+        
             try {
-                const url = `https://api.github.com/repos/${REPO}/contents/${FILE_PATH}`;
+                // We add a timestamp to the URL to prevent the browser from loading a "cached" version
+                const url = `https://api.github.com/repos/${REPO}/contents/${FILE_PATH}?t=${new Date().getTime()}`;
+                
                 const res = await fetch(url, {
-                    headers: { 'Authorization': `token ${token}`, 'Cache-Control': 'no-cache' }
+                    method: 'GET',
+                    mode: 'cors', // Explicitly ask for CORS
+                    headers: { 
+                        'Authorization': `Bearer ${token}`, // Switched to Bearer (more modern)
+                        'Accept': 'application/vnd.github+json'
+                    }
                 });
-
-                if (!res.ok) throw new Error(`Fetch failed: ${res.status} ${res.statusText}. Make sure data.json exists.`);
-
+        
+                if (!res.ok) {
+                    const errorData = await res.json();
+                    // This will tell us if it's a 404 (wrong path) or 401 (wrong token)
+                    throw new Error(`GitHub said: ${res.status} - ${errorData.message}`);
+                }
+        
                 const file = await res.json();
                 currentSha = file.sha;
-
-                // Decode content safely
+        
+                // Decode content
                 const decoded = decodeURIComponent(atob(file.content).split('').map(c => 
                     '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
                 
@@ -137,11 +150,11 @@
                     data: (jsonData && jsonData.length > 0) ? jsonData : [{ "name": "Sheet1", "status": 1, "order": 0, "celldata": [] }]
                 });
                 
-                updateStatus("✅ Sync Active (Ready to Edit)");
+                status.innerText = "✅ Sync Active";
             } catch (err) {
-                console.error(err);
-                updateStatus("❌ Load Failed");
-                alert(err.message);
+                console.error("Fetch Error:", err);
+                status.innerText = "❌ Fetch Failed";
+                alert("CRITICAL ERROR: " + err.message);
             }
         }
 
