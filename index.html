@@ -9,6 +9,7 @@
     <link rel='stylesheet' href='https://cdn.jsdelivr.net/npm/luckysheet/dist/assets/iconfont/iconfont.css' />
     <script src="https://cdn.jsdelivr.net/npm/luckysheet/dist/plugins/js/plugin.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/luckysheet/dist/luckysheet.umd.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
 
     <style>
         :root { --sidebar-width: 260px; --top-height: 60px; --gh-dark: #24292e; }
@@ -116,41 +117,75 @@
         } catch (e) { alert(e.message); }
     }
 
-    async function loadFile(name) {
-        document.getElementById('status').innerText = `Loading ${name}...`;
+    async function saveCurrentFile() {
+        if (!currentFileName || !currentSha) return alert("Select a file first!");
+        document.getElementById('status').innerText = "Compressing & Saving...";
+    
         try {
-            const file = await ghFetch(`contents/${name}?t=${Date.now()}`);
+            // 1. Get raw data
+            const data = luckysheet.getAllSheets();
+            const jsonString = JSON.stringify(data);
+            
+            // 2. Compress the string using Pako (Gzip)
+            const compressed = pako.gzip(jsonString);
+            
+            // 3. Convert Uint8Array to Base64 (Standard GitHub requirement)
+            const base64Content = btoa(String.fromCharCode.apply(null, compressed));
+    
+            const res = await ghReq(`contents/${currentFileName}`, {
+                method: 'PUT',
+                body: JSON.stringify({ 
+                    message: `Compressed Save: ${new Date().toISOString()}`, 
+                    content: base64Content, 
+                    sha: currentSha 
+                })
+            });
+    
+            currentSha = res.content.sha;
+            document.getElementById('status').innerText = "🚀 Saved (Compressed)";
+        } catch (e) {
+            alert("Save Failed: " + e.message);
+        }
+    }
+    
+    async function loadFile(name) {
+        document.getElementById('status').innerText = `Decompressing ${name}...`;
+        try {
+            const file = await ghReq(`contents/${name}?t=${Date.now()}`);
             currentFileName = name;
             currentSha = file.sha;
+    
+            // 1. Convert Base64 to Binary String
+            const binaryString = atob(file.content);
             
-            const decoded = decodeURIComponent(atob(file.content).split('').map(c => 
-                '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
-            const jsonData = JSON.parse(decoded);
-
+            // 2. Convert Binary String to Uint8Array
+            const charData = binaryString.split('').map(x => x.charCodeAt(0));
+            const binData = new Uint8Array(charData);
+    
+            let jsonData;
+            try {
+                // 3. Try to decompress (for new compressed files)
+                const decompressed = pako.ungzip(binData, { to: 'string' });
+                jsonData = JSON.parse(decompressed);
+            } catch (err) {
+                // 4. Fallback for your old, uncompressed 1.6MB files
+                console.log("Not a compressed file, loading as raw JSON...");
+                const decoded = decodeURIComponent(escape(binaryString));
+                jsonData = JSON.parse(decoded);
+            }
+    
             luckysheet.destroy();
             luckysheet.create({
                 container: 'luckysheet',
-                data: jsonData.length > 0 ? jsonData : [{ "name": "Sheet1", "celldata": [] }],
+                data: jsonData,
                 title: name
             });
+    
             refreshFiles();
             document.getElementById('status').innerText = `Editing: ${name}`;
-        } catch (e) { alert(e.message); }
-    }
-
-    async function saveCurrentFile() {
-        if (!currentFileName) return alert("Select a file first!");
-        try {
-            const data = luckysheet.getAllSheets();
-            const content = btoa(encodeURIComponent(JSON.stringify(data)).replace(/%([0-9A-F]{2})/g, (m, p1) => String.fromCharCode('0x' + p1)));
-            
-            const res = await ghFetch(`contents/${currentFileName}`, {
-                method: 'PUT',
-                body: JSON.stringify({ message: `Update ${currentFileName}`, content, sha: currentSha })
-            });
-            currentSha = res.content.sha;
-            document.getElementById('status').innerText = "Saved to Cloud";
-        } catch (e) { alert(e.message); }
+        } catch (e) {
+            alert("Load Failed: " + e.message);
+        }
     }
 
     async function createNewFile() {
