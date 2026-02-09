@@ -15,31 +15,28 @@
         :root { --sidebar-width: 280px; --gh-dark: #1f2328; --active-blue: #0969da; }
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; font-family: -apple-system, system-ui, sans-serif; }
         
-        #header { 
-            height: 50px; background: var(--gh-dark); color: white; 
-            display: flex; align-items: center; padding: 0 10px; gap: 10px; z-index: 1000;
-        }
+        #header { height: 50px; background: var(--gh-dark); color: white; display: flex; align-items: center; padding: 0 10px; gap: 10px; z-index: 1000; }
         #header input { background: #2d333b; border: 1px solid #444c56; color: white; padding: 6px; border-radius: 6px; width: 120px; flex-grow: 1; font-size: 14px;}
         
         #menu-toggle { background: none; border: none; color: white; font-size: 22px; cursor: pointer; }
-
         #main-container { display: flex; height: calc(100% - 50px); width: 100%; position: relative; }
         
         #sidebar { 
             width: var(--sidebar-width); background: #f6f8fa; border-right: 1px solid #d0d7de; 
             display: flex; flex-direction: column; position: absolute; height: 100%; z-index: 999;
-            transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1); left: 0;
+            transition: transform 0.25s ease; left: 0;
         }
         #sidebar.collapsed { transform: translateX(-100%); }
 
         #file-list-header { padding: 15px; border-bottom: 1px solid #d0d7de; display: flex; justify-content: space-between; align-items: center; font-weight: bold; background: #fff; }
         #file-list { flex: 1; overflow-y: auto; list-style: none; margin: 0; padding: 0; }
-        .file-item { padding: 12px 15px; border-bottom: 1px solid #e1e4e8; cursor: pointer; background: #f6f8fa; }
+        .file-item { padding: 12px 15px; border-bottom: 1px solid #e1e4e8; cursor: pointer; background: #f6f8fa; border-left: 4px solid transparent; }
         .file-item:hover { background: #ebf0f4; }
         .file-item.active { border-left: 4px solid var(--active-blue); background: #fff; }
         .file-ops { display: flex; gap: 6px; margin-top: 8px; }
 
-        #sheet-container { flex: 1; height: 100%; width: 100%; position: relative; }
+        /* The Container MUST have absolute positioning for the library to calculate size */
+        #sheet-container { flex: 1; height: 100%; width: 100%; position: relative; overflow: hidden; background: #fff; }
         
         .btn { padding: 6px 12px; border-radius: 6px; border: none; font-weight: 600; cursor: pointer; font-size: 13px; }
         .btn-mini { padding: 4px 8px; font-size: 11px; background: #fff; border: 1px solid #d0d7de; border-radius: 4px; }
@@ -65,7 +62,7 @@
 <div id="main-container">
     <div id="sidebar" class="collapsed">
         <div id="file-list-header">
-            <span>My Drive</span>
+            <span>Drive</span>
             <button onclick="createNewFile()" class="btn-mini" style="background:#2ea44f; color:white; border:none;">＋ New</button>
         </div>
         <ul id="file-list"></ul>
@@ -79,14 +76,9 @@
     let currentSha = null;
     let workbook = null;
 
-    // Fixed: The FortuneSheet global is usually 'FortuneSheet' or 'fortune' depending on version.
-    // We check for both to be safe.
-    function getFortune() {
-        return window.FortuneSheet || window.fortune;
-    }
-
     function toggleSidebar() {
-        document.getElementById('sidebar').classList.toggle('collapsed');
+        const sidebar = document.getElementById('sidebar');
+        sidebar.classList.toggle('collapsed');
     }
 
     window.onload = () => {
@@ -99,19 +91,21 @@
     };
 
     function initSheet(data) {
-        const f = getFortune();
-        if (!f) return console.error("FortuneSheet library not loaded yet.");
+        // Find the global library object
+        const f = window.FortuneSheet || window.fortune;
+        if (!f) return alert("FortuneSheet library failed to load. Check your internet connection.");
         
-        // Destroy existing instance if any
         const container = document.getElementById("sheet-container");
-        container.innerHTML = ''; 
+        container.innerHTML = ''; // Essential: Clear previous DOM
 
+        // Robust Initialization
         workbook = f.create({
             container: "sheet-container",
             data: data,
             lang: 'en',
             showToolbar: true,
-            showGridlines: true
+            showGridlines: true,
+            allowEdit: true
         });
     }
 
@@ -127,10 +121,7 @@
         };
         if (body) options.body = JSON.stringify(body);
         const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, options);
-        if (!res.ok) {
-            const err = await res.json();
-            throw new Error(err.message || "API Error");
-        }
+        if (!res.ok) throw new Error("GitHub API Error: " + res.status);
         return res.json();
     }
 
@@ -147,8 +138,11 @@
             files.forEach(file => {
                 const li = document.createElement('li');
                 li.className = `file-item ${currentFileName === file.name ? 'active' : ''}`;
+                li.onclick = (e) => { 
+                    if (e.target.tagName !== 'BUTTON') loadFile(file.name); 
+                };
                 li.innerHTML = `
-                    <div onclick="loadFile('${file.name}')" style="font-weight:600">📄 ${file.name}</div>
+                    <div style="font-weight:600">📄 ${file.name}</div>
                     <div class="file-ops">
                         <button class="btn-mini" onclick="renameFile('${file.name}')">Ren</button>
                         <button class="btn-mini" onclick="copyFile('${file.name}')">Copy</button>
@@ -158,7 +152,7 @@
                 listEl.appendChild(li);
             });
             document.getElementById('status').innerText = "Online";
-        } catch (e) { alert(e.message); }
+        } catch (e) { alert("Refresh failed: " + e.message); }
     }
 
     async function loadFile(name) {
@@ -173,15 +167,16 @@
             const binData = new Uint8Array(binaryString.split('').map(x => x.charCodeAt(0)));
             let jsonData;
             try { 
-                jsonData = JSON.parse(pako.ungzip(binData, { to: 'string' })); 
+                // Try Pako decompression
+                const decompressed = pako.ungzip(binData, { to: 'string' });
+                jsonData = JSON.parse(decompressed);
             } catch (err) { 
+                // Fallback to legacy plain JSON
                 jsonData = JSON.parse(decodeURIComponent(escape(binaryString))); 
             }
 
             initSheet(jsonData);
             document.getElementById('status').innerText = name;
-            // Update UI state
-            Array.from(document.querySelectorAll('.file-item')).forEach(i => i.classList.remove('active'));
             connectAndRefresh(); 
         } catch (e) { alert("Load Failed: " + e.message); }
     }
@@ -196,7 +191,6 @@
             const res = await ghApi(currentFileName, 'PUT', { message: `Cloud Save`, content, sha: currentSha });
             currentSha = res.content.sha;
             document.getElementById('status').innerText = "🚀 Saved";
-            alert("Saved to GitHub!");
         } catch (e) { alert("Save failed: " + e.message); }
     }
 
@@ -204,7 +198,8 @@
         let name = prompt("Name:");
         if (!name) return;
         if (!name.endsWith('.json')) name += '.json';
-        const compressed = pako.gzip(JSON.stringify([{ name: "Sheet1", celldata: [], status: 1 }]));
+        const initialData = [{ name: "Sheet1", celldata: [], status: 1 }];
+        const compressed = pako.gzip(JSON.stringify(initialData));
         await ghApi(name, 'PUT', { message: `Create`, content: btoa(String.fromCharCode.apply(null, compressed)) });
         connectAndRefresh();
     }
