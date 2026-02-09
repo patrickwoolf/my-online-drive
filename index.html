@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="utf-8" />
-    <title>Patrick's Optimized Drive</title>
+    <title>Patrick's Advanced Drive</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
     
     <link rel='stylesheet' href='https://cdn.jsdelivr.net/npm/luckysheet/dist/plugins/css/pluginsCss.css' />
@@ -13,22 +13,36 @@
     <script src="https://cdn.jsdelivr.net/npm/luckysheet/dist/luckysheet.umd.js"></script>
 
     <style>
-        :root { --sidebar-width: 260px; --gh-dark: #24292e; }
+        :root { --sidebar-width: 280px; --gh-dark: #24292e; --active-blue: #0969da; }
         body { margin: 0; font-family: -apple-system, system-ui, sans-serif; overflow: hidden; display: flex; flex-direction: column; height: 100vh; }
+        
         #header { height: 60px; background: var(--gh-dark); color: white; display: flex; align-items: center; padding: 0 20px; gap: 15px; z-index: 100; }
         #header input { background: #3f4448; border: 1px solid #444d56; color: white; padding: 8px; border-radius: 4px; width: 180px; }
+        
         #main-container { display: flex; flex: 1; position: relative; background: #fff; }
+        
         #sidebar { width: var(--sidebar-width); background: #f6f8fa; border-right: 1px solid #d0d7de; display: flex; flex-direction: column; }
         #file-list-header { padding: 15px; border-bottom: 1px solid #d0d7de; display: flex; justify-content: space-between; align-items: center; font-weight: bold; }
+        
         #file-list { flex: 1; overflow-y: auto; list-style: none; margin: 0; padding: 0; }
-        .file-item { padding: 12px 15px; border-bottom: 1px solid #f0f0f0; cursor: pointer; display: flex; justify-content: space-between; align-items: center; font-size: 14px; }
+        .file-item { padding: 10px 15px; border-bottom: 1px solid #f0f0f0; cursor: pointer; display: flex; flex-direction: column; gap: 5px; transition: 0.2s; }
         .file-item:hover { background: #ebf0f4; }
-        .file-item.active { background: #0969da; color: white; }
+        .file-item.active { border-left: 4px solid var(--active-blue); background: #fff; }
+        
+        .file-info { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; }
+        .file-ops { display: flex; gap: 4px; opacity: 0; transition: 0.2s; }
+        .file-item:hover .file-ops { opacity: 1; }
+        
         #luckysheet { flex: 1; position: relative !important; }
-        .btn { padding: 8px 14px; border-radius: 6px; border: none; font-weight: 600; cursor: pointer; }
+        
+        .btn { padding: 8px 14px; border-radius: 6px; border: none; font-weight: 600; cursor: pointer; font-size: 13px; }
         .btn-primary { background: #2ea44f; color: white; }
+        .btn-blue { background: var(--active-blue); color: white; }
+        
+        .btn-mini { padding: 2px 6px; font-size: 11px; background: #eee; border: 1px solid #ccc; border-radius: 3px; }
+        .btn-mini:hover { background: #ddd; }
+        
         #status { font-size: 12px; color: #8b949e; margin-left: auto; }
-        .btn-icon { background: #ddd; border:none; padding: 2px 6px; border-radius: 4px; cursor:pointer; }
     </style>
 </head>
 <body>
@@ -36,16 +50,16 @@
 <div id="header">
     <strong>Patrick Drive</strong>
     <input type="password" id="token" placeholder="GitHub Token">
-    <button class="btn btn-primary" onclick="connectAndRefresh()">🔄 Connect & Refresh List</button>
-    <button class="btn" style="background:#0969da; color:white;" onclick="saveCurrentFile()">💾 Save Cloud</button>
+    <button class="btn btn-primary" onclick="connectAndRefresh()">🔄 Connect & Refresh</button>
+    <button class="btn btn-blue" onclick="saveCurrentFile()">💾 Save Cloud</button>
     <span id="status">Disconnected</span>
 </div>
 
 <div id="main-container">
     <div id="sidebar">
         <div id="file-list-header">
-            <span>Drive Files</span>
-            <button onclick="createNewFile()" class="btn-icon">＋ New</button>
+            <span>My Spreadsheets</span>
+            <button onclick="createNewFile()" class="btn-mini" style="background:#2ea44f; color:white; border:none;">＋ New</button>
         </div>
         <ul id="file-list"></ul>
     </div>
@@ -63,24 +77,36 @@
             document.getElementById('token').value = saved; 
             connectAndRefresh(); 
         }
-        luckysheet.create({ container: 'luckysheet', lang: 'en' });
+        luckysheet.create({ container: 'luckysheet', lang: 'en', showinfobar: false });
     };
 
-    // Combined function to save token and refresh the sidebar
+    async function ghApi(path, method = 'GET', body = null) {
+        const token = document.getElementById('token').value;
+        const options = {
+            method,
+            headers: { 
+                'Authorization': `token ${token}`,
+                'Accept': 'application/vnd.github+json',
+                'Content-Type': 'application/json'
+            }
+        };
+        if (body) options.body = JSON.stringify(body);
+        
+        const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, options);
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.message || "GitHub API Error");
+        }
+        return res.json();
+    }
+
     async function connectAndRefresh() {
         const token = document.getElementById('token').value;
         if (!token) return alert("Please enter your GitHub Token!");
-        
         localStorage.setItem('gh_token', token);
-        document.getElementById('status').innerText = "Refreshing list...";
         
         try {
-            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/?t=${Date.now()}`, {
-                headers: { 'Authorization': `token ${token}` }
-            });
-            if (!res.ok) throw new Error("Auth failed or Repo not found");
-            
-            const data = await res.json();
+            const data = await ghApi(`?t=${Date.now()}`);
             const files = data.filter(f => f.name.endsWith('.json'));
             
             const listEl = document.getElementById('file-list');
@@ -89,117 +115,116 @@
                 const li = document.createElement('li');
                 li.className = `file-item ${currentFileName === file.name ? 'active' : ''}`;
                 li.innerHTML = `
-                    <span style="flex:1" onclick="loadFile('${file.name}')">📄 ${file.name}</span>
-                    <button class="btn-icon" onclick="deleteFile('${file.name}', '${file.sha}')">🗑️</button>
+                    <div class="file-info" onclick="loadFile('${file.name}')">📄 ${file.name}</div>
+                    <div class="file-ops">
+                        <button class="btn-mini" onclick="renameFile('${file.name}', '${file.sha}')">Rename</button>
+                        <button class="btn-mini" onclick="copyFile('${file.name}')">Copy</button>
+                        <button class="btn-mini" style="color:red" onclick="deleteFile('${file.name}', '${file.sha}')">Del</button>
+                    </div>
                 `;
                 listEl.appendChild(li);
             });
-            document.getElementById('status').innerText = "Connected & Updated";
-        } catch (e) {
-            alert(e.message);
-            document.getElementById('status').innerText = "Error";
-        }
+            document.getElementById('status').innerText = "List Updated";
+        } catch (e) { alert("Refresh Failed: " + e.message); }
     }
 
     async function loadFile(name) {
-        const token = document.getElementById('token').value;
-        document.getElementById('status').innerText = `Opening ${name}...`;
+        document.getElementById('status').innerText = `Loading...`;
         try {
-            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${name}?t=${Date.now()}`, {
-                headers: { 'Authorization': `token ${token}` }
-            });
-            const file = await res.json();
+            const file = await ghApi(`${name}?t=${Date.now()}`);
             currentFileName = name;
             currentSha = file.sha;
 
-            // Handle Decoding & Decompression
             const binaryString = atob(file.content);
             const binData = new Uint8Array(binaryString.split('').map(x => x.charCodeAt(0)));
             
             let jsonData;
             try {
-                // Try Pako first
                 const decompressed = pako.ungzip(binData, { to: 'string' });
                 jsonData = JSON.parse(decompressed);
-                document.getElementById('status').innerText = `Editing (Compressed): ${name}`;
             } catch (err) {
-                // Fallback for old raw JSON files
                 jsonData = JSON.parse(decodeURIComponent(escape(binaryString)));
-                document.getElementById('status').innerText = `Editing (Legacy): ${name}`;
             }
 
             luckysheet.destroy();
-            luckysheet.create({
-                container: 'luckysheet',
-                data: jsonData,
-                title: name
-            });
+            luckysheet.create({ container: 'luckysheet', data: jsonData, title: name });
             
-            // Highlight active file in list
-            Array.from(document.querySelectorAll('.file-item')).forEach(el => el.classList.remove('active'));
-            event.target.closest('.file-item').classList.add('active');
-            
-        } catch (e) { alert("Load error: " + e.message); }
+            connectAndRefresh(); // Refresh list to show active state
+            document.getElementById('status').innerText = `Editing: ${name}`;
+        } catch (e) { alert("Load Failed: " + e.message); }
     }
 
     async function saveCurrentFile() {
-        if (!currentFileName || !currentSha) return alert("Open a file first!");
-        const token = document.getElementById('token').value;
-        document.getElementById('status').innerText = "Compressing & Saving...";
-
+        if (!currentFileName) return alert("Open a file first!");
+        document.getElementById('status').innerText = "Saving...";
         try {
             const data = luckysheet.getAllSheets();
-            const jsonString = JSON.stringify(data);
-            const compressed = pako.gzip(jsonString);
-            const base64Content = btoa(String.fromCharCode.apply(null, compressed));
+            const compressed = pako.gzip(JSON.stringify(data));
+            const content = btoa(String.fromCharCode.apply(null, compressed));
 
-            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentFileName}`, {
-                method: 'PUT',
-                headers: { 'Authorization': `token ${token}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    message: `Cloud Save: ${currentFileName}`, 
-                    content: base64Content, 
-                    sha: currentSha 
-                })
+            const res = await ghApi(currentFileName, 'PUT', {
+                message: `Cloud Save: ${currentFileName}`,
+                content,
+                sha: currentSha
             });
-
-            const result = await res.json();
-            currentSha = result.content.sha;
-            document.getElementById('status').innerText = "✅ Saved & Compressed";
-            alert("Saved successfully!");
+            currentSha = res.content.sha;
+            document.getElementById('status').innerText = "🚀 Saved";
+            alert("File saved successfully!");
         } catch (e) { alert("Save failed: " + e.message); }
     }
 
     async function createNewFile() {
-        let name = prompt("New file name:");
+        let name = prompt("New filename (e.g., patient_list):");
         if (!name) return;
         if (!name.endsWith('.json')) name += '.json';
-        const token = document.getElementById('token').value;
-
+        
         try {
             const initialData = [{ "name": "Sheet1", "celldata": [], "status": 1 }];
-            const jsonString = JSON.stringify(initialData);
-            const compressed = pako.gzip(jsonString);
+            const compressed = pako.gzip(JSON.stringify(initialData));
             const content = btoa(String.fromCharCode.apply(null, compressed));
 
-            await fetch(`https://api.github.com/repos/${REPO}/contents/${name}`, {
-                method: 'PUT',
-                headers: { 'Authorization': `token ${token}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: `Create ${name}`, content })
-            });
-            connectAndRefresh(); // Automatically refresh list
+            await ghApi(name, 'PUT', { message: `Create ${name}`, content });
+            connectAndRefresh();
+        } catch (e) { alert(e.message); }
+    }
+
+    async function renameFile(oldName, sha) {
+        let newName = prompt("New name for " + oldName, oldName);
+        if (!newName || newName === oldName) return;
+        if (!newName.endsWith('.json')) newName += '.json';
+
+        try {
+            document.getElementById('status').innerText = "Renaming...";
+            const fileData = await ghApi(oldName);
+            await ghApi(newName, 'PUT', { message: `Rename from ${oldName}`, content: fileData.content });
+            await ghApi(oldName, 'DELETE', { message: `Cleanup old file`, sha: fileData.sha });
+            if (currentFileName === oldName) currentFileName = newName;
+            connectAndRefresh();
+        } catch (e) { alert(e.message); }
+    }
+
+    async function copyFile(sourceName) {
+        let newName = prompt("Name for copy of " + sourceName, "Copy_of_" + sourceName);
+        if (!newName) return;
+        if (!newName.endsWith('.json')) newName += '.json';
+
+        try {
+            document.getElementById('status').innerText = "Copying...";
+            const fileData = await ghApi(sourceName);
+            await ghApi(newName, 'PUT', { message: `Duplicate ${sourceName}`, content: fileData.content });
+            connectAndRefresh();
         } catch (e) { alert(e.message); }
     }
 
     async function deleteFile(name, sha) {
-        if (!confirm(`Delete ${name}?`)) return;
-        const token = document.getElementById('token').value;
+        if (!confirm(`Delete ${name} permanently?`)) return;
         try {
-            await fetch(`https://api.github.com/repos/${REPO}/contents/${name}`, {
-                method: 'DELETE',
-                headers: { 'Authorization': `token ${token}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: `Delete ${name}`, sha })
-            });
+            await ghApi(name, 'DELETE', { message: `Delete ${name}`, sha });
+            if (currentFileName === name) {
+                currentFileName = null;
+                luckysheet.destroy();
+                luckysheet.create({ container: 'luckysheet' });
+            }
             connectAndRefresh();
         } catch (e) { alert(e.message); }
     }
