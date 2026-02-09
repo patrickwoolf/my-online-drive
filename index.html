@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Patrick's Mobile Drive</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+    <link rel='stylesheet' href='https://cdn.jsdelivr.net/npm/luckysheet/dist/plugins/css/pluginsCss.css' />
+    <link rel='stylesheet' href='https://cdn.jsdelivr.net/npm/luckysheet/dist/plugins/plugins.css' />
+    <link rel='stylesheet' href='https://cdn.jsdelivr.net/npm/luckysheet/dist/css/luckysheet.css' />
+    <link rel='stylesheet' href='https://cdn.jsdelivr.net/npm/luckysheet/dist/assets/iconfont/iconfont.css' />
+    <script src="https://cdn.jsdelivr.net/npm/luckysheet/dist/plugins/js/plugin.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/luckysheet/dist/luckysheet.umd.js"></script>
+
+    <style>
+        :root { --sidebar-width: 280px; --gh-dark: #24292e; --active-blue: #0969da; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; font-family: sans-serif; }
+        
+        /* Header Optimization */
+        #header { 
+            height: 50px; background: var(--gh-dark); color: white; 
+            display: flex; align-items: center; padding: 0 10px; gap: 8px; z-index: 1000; position: relative;
+        }
+        #header input { background: #3f4448; border: 1px solid #444d56; color: white; padding: 6px; border-radius: 4px; width: 100px; flex-grow: 1; font-size: 14px; }
+        
+        /* Mobile Toggle Button */
+        #menu-toggle { background: none; border: none; color: white; font-size: 24px; cursor: pointer; padding: 0 5px; }
+
+        /* Layout */
+        #main-container { display: flex; height: calc(100% - 50px); width: 100%; position: relative; }
+        
+        /* Sidebar / Drawer Logic */
+        #sidebar { 
+            width: var(--sidebar-width); background: #f6f8fa; border-right: 1px solid #d0d7de; 
+            display: flex; flex-direction: column; position: absolute; height: 100%; z-index: 999;
+            transition: transform 0.3s ease; left: 0;
+        }
+        #sidebar.collapsed { transform: translateX(-100%); }
+
+        #file-list-header { padding: 15px; border-bottom: 1px solid #d0d7de; display: flex; justify-content: space-between; align-items: center; font-weight: bold; }
+        #file-list { flex: 1; overflow-y: auto; list-style: none; margin: 0; padding: 0; }
+        .file-item { padding: 12px 15px; border-bottom: 1px solid #e1e4e8; cursor: pointer; display: flex; flex-direction: column; gap: 8px; }
+        .file-item.active { border-left: 4px solid var(--active-blue); background: #fff; }
+        .file-ops { display: flex; gap: 5px; }
+
+        /* Spreadsheet Area */
+        #luckysheet { flex: 1; height: 100%; width: 100%; position: absolute !important; left: 0; top: 0; }
+        
+        /* Utility */
+        .btn { padding: 6px 10px; border-radius: 4px; border: none; font-weight: 600; cursor: pointer; font-size: 12px; }
+        .btn-mini { padding: 4px 8px; font-size: 11px; background: #eee; border: 1px solid #ccc; border-radius: 3px; }
+        #status { font-size: 10px; color: #8b949e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60px; }
+
+        @media (min-width: 768px) {
+            #sidebar { position: relative; transform: none !important; }
+            #luckysheet { position: relative !important; }
+            #header input { width: 200px; flex-grow: 0; }
+            #status { max-width: none; font-size: 12px; }
+            #menu-toggle { display: none; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="header">
+    <button id="menu-toggle" onclick="toggleSidebar()">☰</button>
+    <input type="password" id="token" placeholder="Token">
+    <button class="btn" style="background:#2ea44f; color:white;" onclick="connectAndRefresh()">🔄</button>
+    <button class="btn" style="background:#0969da; color:white;" onclick="saveCurrentFile()">💾 Save</button>
+    <span id="status">...</span>
+</div>
+
+<div id="main-container">
+    <div id="sidebar" class="collapsed">
+        <div id="file-list-header">
+            <span>Files</span>
+            <button onclick="createNewFile()" class="btn-mini" style="background:#2ea44f; color:white; border:none;">＋ New</button>
+        </div>
+        <ul id="file-list"></ul>
+    </div>
+    <div id="luckysheet"></div>
+</div>
+
+<script>
+    const REPO = "patrickwoolf/my-online-drive";
+    let currentFileName = null;
+    let currentSha = null;
+
+    function toggleSidebar() {
+        document.getElementById('sidebar').classList.toggle('collapsed');
+        // Force Luckysheet to resize when sidebar moves
+        setTimeout(() => { luckysheet.resize(); }, 350);
+    }
+
+    window.onload = () => {
+        const saved = localStorage.getItem('gh_token');
+        if (saved) { 
+            document.getElementById('token').value = saved; 
+            connectAndRefresh(); 
+        }
+        initBlankSheet();
+    };
+
+    function initBlankSheet() {
+        luckysheet.create({ 
+            container: 'luckysheet', 
+            lang: 'en', 
+            showinfobar: false,
+            // Hide non-essential toolbar items for mobile
+            showtoolbarConfig: {
+                chart: false,
+                postil: false,
+                pivotTable: false,
+                image: false
+            }
+        });
+    }
+
+    async function ghApi(path, method = 'GET', body = null) {
+        const token = document.getElementById('token').value;
+        const options = {
+            method,
+            headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json' }
+        };
+        if (body) options.body = JSON.stringify(body);
+        const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, options);
+        if (!res.ok) throw new Error("GitHub Error: " + res.status);
+        return res.json();
+    }
+
+    async function connectAndRefresh() {
+        const token = document.getElementById('token').value;
+        if (!token) return alert("Enter Token!");
+        localStorage.setItem('gh_token', token);
+        document.getElementById('status').innerText = "Sync...";
+        try {
+            const data = await ghApi(`?t=${Date.now()}`);
+            const files = data.filter(f => f.name.endsWith('.json'));
+            const listEl = document.getElementById('file-list');
+            listEl.innerHTML = '';
+            files.forEach(file => {
+                const li = document.createElement('li');
+                li.className = `file-item ${currentFileName === file.name ? 'active' : ''}`;
+                li.innerHTML = `
+                    <div onclick="loadFile('${file.name}')" style="font-weight:bold">📄 ${file.name}</div>
+                    <div class="file-ops">
+                        <button class="btn-mini" onclick="renameFile('${file.name}')">Ren</button>
+                        <button class="btn-mini" onclick="copyFile('${file.name}')">Copy</button>
+                        <button class="btn-mini" style="color:red" onclick="deleteFile('${file.name}', '${file.sha}')">Del</button>
+                    </div>
+                `;
+                listEl.appendChild(li);
+            });
+            document.getElementById('status').innerText = "Online";
+        } catch (e) { alert(e.message); }
+    }
+
+    async function loadFile(name) {
+        if (window.innerWidth < 768) toggleSidebar(); // Close drawer on mobile
+        document.getElementById('status').innerText = `Loading...`;
+        try {
+            const file = await ghApi(`${name}?t=${Date.now()}`);
+            currentFileName = name;
+            currentSha = file.sha;
+            const binaryString = atob(file.content);
+            const binData = new Uint8Array(binaryString.split('').map(x => x.charCodeAt(0)));
+            let jsonData;
+            try { jsonData = JSON.parse(pako.ungzip(binData, { to: 'string' })); }
+            catch (err) { jsonData = JSON.parse(decodeURIComponent(escape(binaryString))); }
+
+            luckysheet.destroy();
+            luckysheet.create({ 
+                container: 'luckysheet', 
+                data: jsonData, 
+                title: name,
+                showtoolbarConfig: { chart: false, postil: false, image: false }
+            });
+            document.getElementById('status').innerText = name;
+        } catch (e) { alert("Load Failed: " + e.message); }
+    }
+
+    async function saveCurrentFile() {
+        if (!currentFileName) return alert("No file open!");
+        document.getElementById('status').innerText = "Saving...";
+        try {
+            const data = luckysheet.getAllSheets();
+            const compressed = pako.gzip(JSON.stringify(data));
+            const content = btoa(String.fromCharCode.apply(null, compressed));
+            const res = await ghApi(currentFileName, 'PUT', { message: `Mobile Save`, content, sha: currentSha });
+            currentSha = res.content.sha;
+            document.getElementById('status').innerText = "Saved!";
+        } catch (e) { alert("Save failed: " + e.message); }
+    }
+
+    async function createNewFile() {
+        let name = prompt("Name:");
+        if (!name) return;
+        if (!name.endsWith('.json')) name += '.json';
+        const compressed = pako.gzip(JSON.stringify([{ "name": "Sheet1", "celldata": [], "status": 1 }]));
+        await ghApi(name, 'PUT', { message: `Create`, content: btoa(String.fromCharCode.apply(null, compressed)) });
+        connectAndRefresh();
+    }
+
+    async function renameFile(oldName) {
+        let newName = prompt("New name:", oldName);
+        if (!newName || newName === oldName) return;
+        if (!newName.endsWith('.json')) newName += '.json';
+        const fileData = await ghApi(oldName);
+        await ghApi(newName, 'PUT', { message: `Rename`, content: fileData.content });
+        await ghApi(oldName, 'DELETE', { message: `Cleanup`, sha: fileData.sha });
+        connectAndRefresh();
+    }
+
+    async function copyFile(sourceName) {
+        let newName = prompt("Copy name:", "Copy_" + sourceName);
+        if (!newName) return;
+        const fileData = await ghApi(sourceName);
+        await ghApi(newName, 'PUT', { message: `Copy`, content: fileData.content });
+        connectAndRefresh();
+    }
+
+    async function deleteFile(name, sha) {
+        if (!confirm(`Delete?`)) return;
+        await ghApi(name, 'DELETE', { message: `Delete`, sha });
+        connectAndRefresh();
+    }
+</script>
+</body>
+</html>
