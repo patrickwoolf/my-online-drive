@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>GitHub Spreadsheet Drive</title>
+    <link rel='stylesheet' href='https://cdn.jsdelivr.net/npm/luckysheet/dist/plugins/css/pluginsCss.css' />
+    <link rel='stylesheet' href='https://cdn.jsdelivr.net/npm/luckysheet/dist/plugins/plugins.css' />
+    <link rel='stylesheet' href='https://cdn.jsdelivr.net/npm/luckysheet/dist/css/luckysheet.css' />
+    <link rel='stylesheet' href='https://cdn.jsdelivr.net/npm/luckysheet/dist/assets/iconfont/iconfont.css' />
+    <script src="https://cdn.jsdelivr.net/npm/luckysheet/dist/plugins/js/plugin.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/luckysheet/dist/luckysheet.umd.js"></script>
+    <style>
+        #toolbar { padding: 10px; background: #f4f4f4; border-bottom: 1px solid #ccc; display: flex; gap: 10px; }
+        #luckysheet { margin:0;padding:0;position:absolute;width:100%;left: 0;top: 50px;bottom: 0; }
+        input { padding: 5px; }
+    </style>
+</head>
+<body>
+    <div id="toolbar">
+        <input type="password" id="token" placeholder="GitHub Token">
+        <button onclick="loadFromGithub()">📂 Load Data</button>
+        <button onclick="saveToGithub()" style="background: #2ea44f; color: white; border: none; cursor: pointer;">💾 Save to GitHub</button>
+        <span id="status"></span>
+    </div>
+    <div id="luckysheet"></div>
+
+    <script>
+        const REPO = "YOUR_USERNAME/YOUR_REPO_NAME"; // Change this!
+        const FILE_PATH = "data.json";
+        let currentSha = null;
+
+        // Initialize empty sheet
+        $(function () {
+            luckysheet.create({ container: 'luckysheet' });
+        });
+
+        async function loadFromGithub() {
+            const token = document.getElementById('token').value;
+            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${FILE_PATH}`, {
+                headers: { 'Authorization': `token ${token}` }
+            });
+            const file = await res.json();
+            currentSha = file.sha;
+            const content = JSON.parse(decodeURIComponent(escape(atob(file.content))));
+            
+            luckysheet.destroy();
+            luckysheet.create({
+                container: 'luckysheet',
+                data: content.length > 0 ? content : [{ "name": "Sheet1", "status": 1, "order": 0, "celldata": [] }]
+            });
+            document.getElementById('status').innerText = "✅ Loaded!";
+        }
+
+        async function saveToGithub() {
+            const token = document.getElementById('token').value;
+            if (!currentSha) return alert("Load data first to get the file SHA!");
+
+            const data = luckysheet.getAllSheets();
+            const content = btoa(unescape(encodeURIComponent(JSON.stringify(data))));
+
+            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${FILE_PATH}`, {
+                method: 'PUT',
+                headers: { 
+                    'Authorization': `token ${token}`,
+                    'Content-Type': 'application/json' 
+                },
+                body: JSON.stringify({
+                    message: "Update spreadsheet via Web UI",
+                    content: content,
+                    sha: currentSha
+                })
+            });
+
+            if (res.ok) {
+                const updatedFile = await res.json();
+                currentSha = updatedFile.content.sha;
+                document.getElementById('status').innerText = "🚀 Saved successfully!";
+            } else {
+                alert("Error saving: " + res.statusText);
+            }
+        }
+    </script>
+</body>
+</html>
