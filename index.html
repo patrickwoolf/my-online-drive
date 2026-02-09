@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Patrick's Interactive Drive</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+    
+    <link href="https://unpkg.com/tabulator-tables@5.5.0/dist/css/tabulator_modern.min.css" rel="stylesheet">
+    <script type="text/javascript" src="https://unpkg.com/tabulator-tables@5.5.0/dist/js/tabulator.min.js"></script>
+
+    <style>
+        :root { --sidebar-width: 280px; --gh-dark: #1f2328; --active-blue: #0969da; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; font-family: -apple-system, sans-serif; background: #f6f8fa; }
+        
+        #header { height: 50px; background: var(--gh-dark); color: white; display: flex; align-items: center; padding: 0 10px; gap: 10px; z-index: 1000; }
+        #header input { background: #2d333b; border: 1px solid #444c56; color: white; padding: 6px; border-radius: 6px; width: 120px; flex-grow: 1; }
+        
+        #main-container { display: flex; height: calc(100% - 50px); width: 100%; position: relative; }
+        
+        #sidebar { 
+            width: var(--sidebar-width); background: #f6f8fa; border-right: 1px solid #d0d7de; 
+            display: flex; flex-direction: column; transition: margin-left 0.3s ease;
+        }
+        #sidebar.hidden { margin-left: calc(var(--sidebar-width) * -1); }
+
+        #file-list { flex: 1; overflow-y: auto; list-style: none; margin: 0; padding: 0; }
+        .file-item { padding: 12px 15px; border-bottom: 1px solid #e1e4e8; cursor: pointer; font-size: 14px; }
+        .file-item.active { background: #fff; border-left: 4px solid var(--active-blue); font-weight: bold; }
+
+        /* Grid Styling */
+        #grid-wrapper { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: #fff; }
+        #example-table { font-size: 13px; }
+
+        /* Cell Toggle Magic */
+        .tabulator-cell { transition: height 0.2s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .tabulator-cell.expanded { white-space: normal !important; overflow: visible !important; height: auto !important; min-height: 100px; background: #fffbe6 !important; }
+
+        #tab-bar { height: 35px; background: #eee; border-top: 1px solid #ccc; display: flex; align-items: center; padding: 0 10px; gap: 5px; }
+        .tab { padding: 4px 12px; background: #ddd; border-radius: 4px 4px 0 0; cursor: pointer; font-size: 12px; border: 1px solid #ccc; }
+        .tab.active { background: #fff; font-weight: bold; }
+
+        .btn { padding: 6px 12px; border-radius: 4px; border: none; font-weight: 600; cursor: pointer; font-size: 12px; }
+        #status { font-size: 11px; color: #8b949e; margin-left: auto; }
+    </style>
+</head>
+<body>
+
+<div id="header">
+    <button class="btn" style="background:#444d56; color:white;" onclick="toggleSidebar()">📁 Files</button>
+    <input type="password" id="token" placeholder="Token">
+    <button class="btn" style="background:#2ea44f; color:white;" onclick="connectAndRefresh()">🔄 Sync</button>
+    <button class="btn" style="background:#0969da; color:white;" onclick="saveCurrentFile()">💾 Save</button>
+    <span id="status">Offline</span>
+</div>
+
+<div id="main-container">
+    <div id="sidebar">
+        <div style="padding:15px; font-weight:bold;">Drive <button onclick="createNewFile()" style="float:right">+</button></div>
+        <ul id="file-list"></ul>
+    </div>
+
+    <div id="grid-wrapper">
+        <div id="example-table"></div>
+        <div id="tab-bar">
+             <button onclick="addNewTab()" style="border:none; background:none; cursor:pointer; color:var(--active-blue);">＋ Add Sheet</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const REPO = "patrickwoolf/my-online-drive";
+    let currentFileName = null;
+    let currentSha = null;
+    let table = null;
+    
+    let workbookData = { "Sheet1": [{id:1, a:"", b:"", c:""}, {id:2, a:"", b:"", c:""}] };
+    let activeSheetName = "Sheet1";
+
+    function toggleSidebar() { document.getElementById('sidebar').classList.toggle('hidden'); }
+
+    window.onload = () => {
+        const saved = localStorage.getItem('gh_token');
+        if (saved) { document.getElementById('token').value = saved; connectAndRefresh(); }
+        initGrid(workbookData[activeSheetName]);
+    };
+
+    function initGrid(data) {
+        table = new Tabulator("#example-table", {
+            data: data,
+            layout: "fitColumns",
+            height: "100%",
+            autoColumns: true,
+            autoColumnsDefinitions: function(definitions){
+                definitions.forEach((column) => { column.editor = "textarea"; });
+                return column;
+            },
+            movableColumns: true,
+            resizableRows: true,
+            // CUSTOM FEATURE: Double click to toggle cell size
+            cellDblClick: function(e, cell) {
+                cell.getElement().classList.toggle("expanded");
+            },
+        });
+    }
+
+    function renderTabs() {
+        const tabBar = document.getElementById('tab-bar');
+        tabBar.querySelectorAll('.tab').forEach(t => t.remove());
+        Object.keys(workbookData).forEach(name => {
+            const btn = document.createElement('div');
+            btn.className = `tab ${name === activeSheetName ? 'active' : ''}`;
+            btn.innerText = name;
+            btn.onclick = () => switchTab(name);
+            tabBar.insertBefore(btn, tabBar.firstChild);
+        });
+    }
+
+    function switchTab(name) {
+        workbookData[activeSheetName] = table.getData();
+        activeSheetName = name;
+        initGrid(workbookData[name]);
+        renderTabs();
+    }
+
+    function addNewTab() {
+        const name = prompt("Sheet Name:");
+        if (!name || workbookData[name]) return;
+        workbookData[name] = [{id:1}];
+        switchTab(name);
+    }
+
+    async function connectAndRefresh() {
+        const token = document.getElementById('token').value;
+        if (!token) return;
+        localStorage.setItem('gh_token', token);
+        const res = await fetch(`https://api.github.com/repos/${REPO}/contents/?t=${Date.now()}`, {
+            headers: { 'Authorization': `token ${token}` }
+        });
+        const data = await res.json();
+        const listEl = document.getElementById('file-list');
+        listEl.innerHTML = '';
+        data.filter(f => f.name.endsWith('.json')).forEach(file => {
+            const li = document.createElement('li');
+            li.className = `file-item ${currentFileName === file.name ? 'active' : ''}`;
+            li.innerHTML = `📄 ${file.name}`;
+            li.onclick = () => loadFile(file.name);
+            listEl.appendChild(li);
+        });
+    }
+
+    async function loadFile(name) {
+        document.getElementById('status').innerText = `Loading...`;
+        try {
+            const token = document.getElementById('token').value;
+            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${name}?t=${Date.now()}`, {
+                headers: { 'Authorization': `token ${token}` }
+            });
+            const file = await res.json();
+            currentFileName = name;
+            currentSha = file.sha;
+            
+            const binaryString = atob(file.content);
+            const binData = new Uint8Array(binaryString.split('').map(x => x.charCodeAt(0)));
+            let jsonData;
+            try { jsonData = JSON.parse(pako.ungzip(binData, { to: 'string' })); }
+            catch (err) { jsonData = JSON.parse(decodeURIComponent(escape(binaryString))); }
+
+            workbookData = Array.isArray(jsonData) ? { "Sheet1": jsonData } : jsonData;
+            activeSheetName = Object.keys(workbookData)[0];
+            initGrid(workbookData[activeSheetName]);
+            renderTabs();
+            document.getElementById('status').innerText = name;
+        } catch (e) { alert("Load error: " + e.message); }
+    }
+
+    async function saveCurrentFile() {
+        if (!currentFileName) return alert("Open a file!");
+        workbookData[activeSheetName] = table.getData();
+        document.getElementById('status').innerText = "Compressing...";
+        try {
+            const token = document.getElementById('token').value;
+            const content = btoa(String.fromCharCode.apply(null, pako.gzip(JSON.stringify(workbookData))));
+            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentFileName}`, {
+                method: 'PUT',
+                headers: { 'Authorization': `token ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: "Cloud Save", content, sha: currentSha })
+            });
+            const result = await res.json();
+            currentSha = result.content.sha;
+            document.getElementById('status').innerText = "🚀 Saved";
+        } catch (e) { alert("Save error: " + e.message); }
+    }
+
+    async function createNewFile() {
+        let name = prompt("Name:");
+        if (!name) return;
+        if (!name.endsWith('.json')) name += '.json';
+        const token = document.getElementById('token').value;
+        const content = btoa(String.fromCharCode.apply(null, pako.gzip(JSON.stringify({"Sheet1":[{id:1}]}))));
+        await fetch(`https://api.github.com/repos/${REPO}/contents/${name}`, {
+            method: 'PUT',
+            headers: { 'Authorization': `token ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: "Create", content })
+        });
+        connectAndRefresh();
+    }
+</script>
+</body>
+</html>
