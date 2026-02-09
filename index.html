@@ -7,6 +7,7 @@
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
 
+    <script src="https://cdn.jsdelivr.net/npm/dayjs@1.11.7/dayjs.min.js"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortune-sheet/variant/dist/index.min.css" />
     <script src="https://cdn.jsdelivr.net/npm/@fortune-sheet/variant/dist/index.min.js"></script>
 
@@ -18,7 +19,7 @@
             height: 50px; background: var(--gh-dark); color: white; 
             display: flex; align-items: center; padding: 0 10px; gap: 10px; z-index: 1000;
         }
-        #header input { background: #2d333b; border: 1px solid #444c56; color: white; padding: 6px; border-radius: 6px; width: 120px; flex-grow: 1; }
+        #header input { background: #2d333b; border: 1px solid #444c56; color: white; padding: 6px; border-radius: 6px; width: 120px; flex-grow: 1; font-size: 14px;}
         
         #menu-toggle { background: none; border: none; color: white; font-size: 22px; cursor: pointer; }
 
@@ -41,8 +42,8 @@
         #sheet-container { flex: 1; height: 100%; width: 100%; position: relative; }
         
         .btn { padding: 6px 12px; border-radius: 6px; border: none; font-weight: 600; cursor: pointer; font-size: 13px; }
-        .btn-mini { padding: 4px 8px; font-size: 11px; background: #fff; border: 1px solid #d0d7de; border-radius: 4px; box-shadow: 0 1px 0 rgba(0,0,0,0.04); }
-        #status { font-size: 11px; color: #8b949e; white-space: nowrap; }
+        .btn-mini { padding: 4px 8px; font-size: 11px; background: #fff; border: 1px solid #d0d7de; border-radius: 4px; }
+        #status { font-size: 11px; color: #8b949e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 80px; }
 
         @media (min-width: 768px) {
             #sidebar { position: relative; transform: none !important; }
@@ -64,7 +65,7 @@
 <div id="main-container">
     <div id="sidebar" class="collapsed">
         <div id="file-list-header">
-            <span>Drive</span>
+            <span>My Drive</span>
             <button onclick="createNewFile()" class="btn-mini" style="background:#2ea44f; color:white; border:none;">＋ New</button>
         </div>
         <ul id="file-list"></ul>
@@ -78,6 +79,12 @@
     let currentSha = null;
     let workbook = null;
 
+    // Fixed: The FortuneSheet global is usually 'FortuneSheet' or 'fortune' depending on version.
+    // We check for both to be safe.
+    function getFortune() {
+        return window.FortuneSheet || window.fortune;
+    }
+
     function toggleSidebar() {
         document.getElementById('sidebar').classList.toggle('collapsed');
     }
@@ -88,16 +95,21 @@
             document.getElementById('token').value = saved; 
             connectAndRefresh(); 
         }
-        initSheet([{ name: "Sheet1", celldata: [] }]);
+        initSheet([{ name: "Sheet1", celldata: [], status: 1 }]);
     };
 
     function initSheet(data) {
-        if (workbook) workbook.destroy();
-        workbook = fortune.create({
+        const f = getFortune();
+        if (!f) return console.error("FortuneSheet library not loaded yet.");
+        
+        // Destroy existing instance if any
+        const container = document.getElementById("sheet-container");
+        container.innerHTML = ''; 
+
+        workbook = f.create({
             container: "sheet-container",
             data: data,
             lang: 'en',
-            allowEdit: true,
             showToolbar: true,
             showGridlines: true
         });
@@ -107,11 +119,18 @@
         const token = document.getElementById('token').value;
         const options = {
             method,
-            headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json' }
+            headers: { 
+                'Authorization': `token ${token}`,
+                'Accept': 'application/vnd.github+json',
+                'Content-Type': 'application/json' 
+            }
         };
         if (body) options.body = JSON.stringify(body);
         const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, options);
-        if (!res.ok) throw new Error("API Error: " + res.status);
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.message || "API Error");
+        }
         return res.json();
     }
 
@@ -131,9 +150,9 @@
                 li.innerHTML = `
                     <div onclick="loadFile('${file.name}')" style="font-weight:600">📄 ${file.name}</div>
                     <div class="file-ops">
-                        <button class="btn-mini" onclick="renameFile('${file.name}')">Rename</button>
+                        <button class="btn-mini" onclick="renameFile('${file.name}')">Ren</button>
                         <button class="btn-mini" onclick="copyFile('${file.name}')">Copy</button>
-                        <button class="btn-mini" style="color:#cf222e" onclick="deleteFile('${file.name}', '${file.sha}')">Delete</button>
+                        <button class="btn-mini" style="color:#cf222e" onclick="deleteFile('${file.name}', '${file.sha}')">Del</button>
                     </div>
                 `;
                 listEl.appendChild(li);
@@ -144,7 +163,7 @@
 
     async function loadFile(name) {
         if (window.innerWidth < 768) toggleSidebar();
-        document.getElementById('status').innerText = `Opening...`;
+        document.getElementById('status').innerText = `Loading...`;
         try {
             const file = await ghApi(`${name}?t=${Date.now()}`);
             currentFileName = name;
@@ -161,7 +180,9 @@
 
             initSheet(jsonData);
             document.getElementById('status').innerText = name;
-            connectAndRefresh();
+            // Update UI state
+            Array.from(document.querySelectorAll('.file-item')).forEach(i => i.classList.remove('active'));
+            connectAndRefresh(); 
         } catch (e) { alert("Load Failed: " + e.message); }
     }
 
@@ -175,6 +196,7 @@
             const res = await ghApi(currentFileName, 'PUT', { message: `Cloud Save`, content, sha: currentSha });
             currentSha = res.content.sha;
             document.getElementById('status').innerText = "🚀 Saved";
+            alert("Saved to GitHub!");
         } catch (e) { alert("Save failed: " + e.message); }
     }
 
@@ -190,24 +212,33 @@
     async function renameFile(oldName) {
         let newName = prompt("New name:", oldName);
         if (!newName || newName === oldName) return;
-        const fileData = await ghApi(oldName);
-        await ghApi(newName, 'PUT', { message: `Rename`, content: fileData.content });
-        await ghApi(oldName, 'DELETE', { message: `Cleanup`, sha: fileData.sha });
-        connectAndRefresh();
+        if (!newName.endsWith('.json')) newName += '.json';
+        try {
+            const fileData = await ghApi(oldName);
+            await ghApi(newName, 'PUT', { message: `Rename`, content: fileData.content });
+            await ghApi(oldName, 'DELETE', { message: `Cleanup`, sha: fileData.sha });
+            connectAndRefresh();
+        } catch (e) { alert(e.message); }
     }
 
     async function copyFile(sourceName) {
         let newName = prompt("Copy name:", "Copy_" + sourceName);
         if (!newName) return;
-        const fileData = await ghApi(sourceName);
-        await ghApi(newName, 'PUT', { message: `Copy`, content: fileData.content });
-        connectAndRefresh();
+        if (!newName.endsWith('.json')) newName += '.json';
+        try {
+            const fileData = await ghApi(sourceName);
+            await ghApi(newName, 'PUT', { message: `Copy`, content: fileData.content });
+            connectAndRefresh();
+        } catch (e) { alert(e.message); }
     }
 
     async function deleteFile(name, sha) {
         if (!confirm(`Delete ${name}?`)) return;
-        await ghApi(name, 'DELETE', { message: `Delete`, sha });
-        connectAndRefresh();
+        try {
+            await ghApi(name, 'DELETE', { message: `Delete`, sha });
+            if (currentFileName === name) location.reload();
+            connectAndRefresh();
+        } catch (e) { alert(e.message); }
     }
 </script>
 </body>
