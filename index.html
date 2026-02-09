@@ -1,82 +1,189 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="utf-8" />
-    <title>GitHub Spreadsheet Drive</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Patrick's Online Drive</title>
+    
     <link rel='stylesheet' href='https://cdn.jsdelivr.net/npm/luckysheet/dist/plugins/css/pluginsCss.css' />
     <link rel='stylesheet' href='https://cdn.jsdelivr.net/npm/luckysheet/dist/plugins/plugins.css' />
     <link rel='stylesheet' href='https://cdn.jsdelivr.net/npm/luckysheet/dist/css/luckysheet.css' />
     <link rel='stylesheet' href='https://cdn.jsdelivr.net/npm/luckysheet/dist/assets/iconfont/iconfont.css' />
     <script src="https://cdn.jsdelivr.net/npm/luckysheet/dist/plugins/js/plugin.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/luckysheet/dist/luckysheet.umd.js"></script>
+
     <style>
-        #toolbar { padding: 10px; background: #f4f4f4; border-bottom: 1px solid #ccc; display: flex; gap: 10px; }
-        #luckysheet { margin:0;padding:0;position:absolute;width:100%;left: 0;top: 50px;bottom: 0; }
-        input { padding: 5px; }
+        body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        
+        #toolbar { 
+            height: 50px;
+            padding: 0 15px;
+            background: #24292e; 
+            color: white;
+            display: flex; 
+            align-items: center; 
+            gap: 12px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            z-index: 1000;
+            position: relative;
+        }
+
+        #luckysheet { 
+            margin:0; padding:0;
+            position:absolute;
+            width:100%;
+            left: 0;
+            top: 50px;
+            bottom: 0; 
+        }
+
+        input[type="password"] {
+            background: #3f4448;
+            border: 1px solid #444d56;
+            color: white;
+            padding: 6px 10px;
+            border-radius: 4px;
+            width: 200px;
+        }
+
+        button {
+            padding: 6px 12px;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            transition: opacity 0.2s;
+        }
+
+        .btn-sync { background: #2ea44f; color: white; }
+        .btn-save { background: #0969da; color: white; }
+        .btn-logout { background: #444d56; color: white; }
+        button:hover { opacity: 0.8; }
+        button:disabled { background: #666; cursor: not-allowed; }
+
+        #status { font-size: 13px; color: #8b949e; }
     </style>
 </head>
 <body>
+
     <div id="toolbar">
-        <input type="password" id="token" placeholder="GitHub Token">
-        <button onclick="loadFromGithub()">📂 Load Data</button>
-        <button onclick="saveToGithub()" style="background: #2ea44f; color: white; border: none; cursor: pointer;">💾 Save to GitHub</button>
-        <span id="status"></span>
+        <input type="password" id="token" placeholder="Enter GitHub Token">
+        <button class="btn-sync" onclick="loadFromGithub()">📂 Sync / Load</button>
+        <button class="btn-save" onclick="saveToGithub()">💾 Save Changes</button>
+        <button class="btn-logout" onclick="logout()">Forget Token</button>
+        <span id="status">Ready</span>
     </div>
+
     <div id="luckysheet"></div>
 
     <script>
         const REPO = "patrickwoolf/my-online-drive"; 
-        const FILE_PATH = "data.json";
+        const FILE_PATH = "data.json"; 
         let currentSha = null;
 
-        // Initialize empty sheet
-        $(function () {
-            luckysheet.create({ container: 'luckysheet' });
-        });
+        // Initialize on start
+        window.onload = () => {
+            const savedToken = localStorage.getItem('gh_token');
+            if (savedToken) {
+                document.getElementById('token').value = savedToken;
+                updateStatus("🔑 Token loaded. Click Sync to start.");
+            }
+            
+            luckysheet.create({ 
+                container: 'luckysheet',
+                title: 'My Online Drive',
+                lang: 'en'
+            });
+        };
+
+        function updateStatus(msg) {
+            document.getElementById('status').innerText = msg;
+        }
+
+        function logout() {
+            if(confirm("Forget token and refresh?")) {
+                localStorage.removeItem('gh_token');
+                location.reload();
+            }
+        }
 
         async function loadFromGithub() {
             const token = document.getElementById('token').value;
-            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${FILE_PATH}`, {
-                headers: { 'Authorization': `token ${token}` }
-            });
-            const file = await res.json();
-            currentSha = file.sha;
-            const content = JSON.parse(decodeURIComponent(escape(atob(file.content))));
+            if (!token) return alert("Please enter your GitHub Token!");
             
-            luckysheet.destroy();
-            luckysheet.create({
-                container: 'luckysheet',
-                data: content.length > 0 ? content : [{ "name": "Sheet1", "status": 1, "order": 0, "celldata": [] }]
-            });
-            document.getElementById('status').innerText = "✅ Loaded!";
+            localStorage.setItem('gh_token', token);
+            updateStatus("⏳ Fetching data...");
+
+            try {
+                const url = `https://api.github.com/repos/${REPO}/contents/${FILE_PATH}`;
+                const res = await fetch(url, {
+                    headers: { 'Authorization': `token ${token}`, 'Cache-Control': 'no-cache' }
+                });
+
+                if (!res.ok) throw new Error(`Fetch failed: ${res.status} ${res.statusText}. Make sure data.json exists.`);
+
+                const file = await res.json();
+                currentSha = file.sha;
+
+                // Decode content safely
+                const decoded = decodeURIComponent(atob(file.content).split('').map(c => 
+                    '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
+                
+                const jsonData = JSON.parse(decoded);
+                
+                luckysheet.destroy();
+                luckysheet.create({
+                    container: 'luckysheet',
+                    data: (jsonData && jsonData.length > 0) ? jsonData : [{ "name": "Sheet1", "status": 1, "order": 0, "celldata": [] }]
+                });
+                
+                updateStatus("✅ Sync Active (Ready to Edit)");
+            } catch (err) {
+                console.error(err);
+                updateStatus("❌ Load Failed");
+                alert(err.message);
+            }
         }
 
         async function saveToGithub() {
             const token = document.getElementById('token').value;
-            if (!currentSha) return alert("Load data first to get the file SHA!");
+            if (!currentSha) return alert("You must 'Sync' before you can save!");
 
-            const data = luckysheet.getAllSheets();
-            const content = btoa(unescape(encodeURIComponent(JSON.stringify(data))));
+            updateStatus("⏳ Cloud saving...");
 
-            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${FILE_PATH}`, {
-                method: 'PUT',
-                headers: { 
-                    'Authorization': `token ${token}`,
-                    'Content-Type': 'application/json' 
-                },
-                body: JSON.stringify({
-                    message: "Update spreadsheet via Web UI",
-                    content: content,
-                    sha: currentSha
-                })
-            });
+            try {
+                const data = luckysheet.getAllSheets();
+                const jsonString = JSON.stringify(data);
+                
+                // UTF-8 friendly Base64 encoding
+                const content = btoa(encodeURIComponent(jsonString).replace(/%([0-9A-F]{2})/g, (match, p1) => 
+                    String.fromCharCode('0x' + p1)));
 
-            if (res.ok) {
+                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${FILE_PATH}`, {
+                    method: 'PUT',
+                    headers: { 
+                        'Authorization': `token ${token}`,
+                        'Content-Type': 'application/json' 
+                    },
+                    body: JSON.stringify({
+                        message: "Drive Update: " + new Date().toLocaleString(),
+                        content: content,
+                        sha: currentSha
+                    })
+                });
+
+                if (!res.ok) {
+                    const errorDetails = await res.json();
+                    throw new Error(errorDetails.message || "Save failed");
+                }
+
                 const updatedFile = await res.json();
-                currentSha = updatedFile.content.sha;
-                document.getElementById('status').innerText = "🚀 Saved successfully!";
-            } else {
-                alert("Error saving: " + res.statusText);
+                currentSha = updatedFile.content.sha; // Save the new SHA for next edit
+                updateStatus("🚀 Saved successfully!");
+            } catch (err) {
+                console.error(err);
+                updateStatus("❌ Save Failed");
+                alert("Error: " + err.message);
             }
         }
     </script>
