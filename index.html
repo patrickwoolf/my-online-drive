@@ -3,237 +3,226 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Patrick's Pro Drive v14</title>
+    <title>Patrick's Mobile Drive</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
-    
-    <link href="https://unpkg.com/tabulator-tables@5.5.0/dist/css/tabulator_modern.min.css" rel="stylesheet">
-    <script type="text/javascript" src="https://unpkg.com/tabulator-tables@5.5.0/dist/js/tabulator.min.js"></script>
+    <link rel='stylesheet' href='https://cdn.jsdelivr.net/npm/luckysheet/dist/plugins/css/pluginsCss.css' />
+    <link rel='stylesheet' href='https://cdn.jsdelivr.net/npm/luckysheet/dist/plugins/plugins.css' />
+    <link rel='stylesheet' href='https://cdn.jsdelivr.net/npm/luckysheet/dist/css/luckysheet.css' />
+    <link rel='stylesheet' href='https://cdn.jsdelivr.net/npm/luckysheet/dist/assets/iconfont/iconfont.css' />
+    <script src="https://cdn.jsdelivr.net/npm/luckysheet/dist/plugins/js/plugin.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/luckysheet/dist/luckysheet.umd.js"></script>
 
     <style>
-        :root { --sidebar-width: 260px; --gh-dark: #1f2328; --active-blue: #0969da; }
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; font-family: -apple-system, sans-serif; background: #fff; }
+        :root { --sidebar-width: 280px; --gh-dark: #24292e; --active-blue: #0969da; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; font-family: sans-serif; }
         
-        #header { height: 50px; background: var(--gh-dark); color: white; display: flex; align-items: center; padding: 0 10px; gap: 10px; z-index: 1000; }
-        #header input { background: #2d333b; border: 1px solid #444c56; color: white; padding: 6px; border-radius: 6px; width: 120px; flex-grow: 1; }
+        /* Header Optimization */
+        #header { 
+            height: 50px; background: var(--gh-dark); color: white; 
+            display: flex; align-items: center; padding: 0 10px; gap: 8px; z-index: 1000; position: relative;
+        }
+        #header input { background: #3f4448; border: 1px solid #444d56; color: white; padding: 6px; border-radius: 4px; width: 100px; flex-grow: 1; font-size: 14px; }
         
+        /* Mobile Toggle Button */
+        #menu-toggle { background: none; border: none; color: white; font-size: 24px; cursor: pointer; padding: 0 5px; }
+
+        /* Layout */
         #main-container { display: flex; height: calc(100% - 50px); width: 100%; position: relative; }
         
+        /* Sidebar / Drawer Logic */
         #sidebar { 
             width: var(--sidebar-width); background: #f6f8fa; border-right: 1px solid #d0d7de; 
-            display: flex; flex-direction: column; transition: margin-left 0.3s ease;
+            display: flex; flex-direction: column; position: absolute; height: 100%; z-index: 999;
+            transition: transform 0.3s ease; left: 0;
         }
-        #sidebar.hidden { margin-left: calc(var(--sidebar-width) * -1); }
+        #sidebar.collapsed { transform: translateX(-100%); }
 
+        #file-list-header { padding: 15px; border-bottom: 1px solid #d0d7de; display: flex; justify-content: space-between; align-items: center; font-weight: bold; }
         #file-list { flex: 1; overflow-y: auto; list-style: none; margin: 0; padding: 0; }
-        .file-item { padding: 12px 15px; border-bottom: 1px solid #e1e4e8; cursor: pointer; font-size: 13px; display: flex; justify-content: space-between; align-items: center; }
-        .file-item.active { background: #fff; border-left: 4px solid var(--active-blue); font-weight: bold; }
+        .file-item { padding: 12px 15px; border-bottom: 1px solid #e1e4e8; cursor: pointer; display: flex; flex-direction: column; gap: 8px; }
+        .file-item.active { border-left: 4px solid var(--active-blue); background: #fff; }
+        .file-ops { display: flex; gap: 5px; }
 
-        #grid-wrapper { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-        #example-table { flex: 1; font-size: 13px; border: none; }
+        /* Spreadsheet Area */
+        #luckysheet { flex: 1; height: 100%; width: 100%; position: absolute !important; left: 0; top: 0; }
+        
+        /* Utility */
+        .btn { padding: 6px 10px; border-radius: 4px; border: none; font-weight: 600; cursor: pointer; font-size: 12px; }
+        .btn-mini { padding: 4px 8px; font-size: 11px; background: #eee; border: 1px solid #ccc; border-radius: 3px; }
+        #status { font-size: 10px; color: #8b949e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60px; }
 
-        /* Modern Cell Toggle */
-        .tabulator-cell { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 8px !important; }
-        .tabulator-cell.expanded { white-space: normal !important; height: auto !important; background: #fffbe6 !important; word-break: break-word; }
-
-        #tab-bar { height: 40px; background: #f6f8fa; border-top: 1px solid #d0d7de; display: flex; align-items: center; padding: 0 10px; gap: 8px; }
-        .tab { padding: 5px 15px; background: #e1e4e8; border-radius: 6px; cursor: pointer; font-size: 12px; border: 1px solid #d0d7de; }
-        .tab.active { background: #fff; border-bottom: 2px solid var(--active-blue); font-weight: bold; }
-
-        .btn { padding: 6px 12px; border-radius: 6px; border: none; font-weight: 600; cursor: pointer; font-size: 12px; }
-        #status { font-size: 11px; color: #8b949e; margin-left: auto; }
-        .del-btn { color: #cf222e; background: none; border: none; cursor: pointer; font-weight: bold; }
+        @media (min-width: 768px) {
+            #sidebar { position: relative; transform: none !important; }
+            #luckysheet { position: relative !important; }
+            #header input { width: 200px; flex-grow: 0; }
+            #status { max-width: none; font-size: 12px; }
+            #menu-toggle { display: none; }
+        }
     </style>
 </head>
 <body>
 
 <div id="header">
-    <button class="btn" style="background:#444d56; color:white;" onclick="toggleSidebar()">📁 Files</button>
+    <button id="menu-toggle" onclick="toggleSidebar()">☰</button>
     <input type="password" id="token" placeholder="Token">
-    <button class="btn" style="background:#2ea44f; color:white;" onclick="connectAndRefresh()">🔄 Sync</button>
+    <button class="btn" style="background:#2ea44f; color:white;" onclick="connectAndRefresh()">🔄</button>
     <button class="btn" style="background:#0969da; color:white;" onclick="saveCurrentFile()">💾 Save</button>
-    <span id="status">Offline</span>
+    <span id="status">...</span>
 </div>
 
 <div id="main-container">
-    <div id="sidebar">
-        <div style="padding:15px; font-weight:bold; display:flex; justify-content:space-between; align-items:center;">
-            My Drive <button onclick="createNewFile()" class="btn" style="background:#2ea44f; color:white; padding:2px 8px;">+</button>
+    <div id="sidebar" class="collapsed">
+        <div id="file-list-header">
+            <span>Files</span>
+            <button onclick="createNewFile()" class="btn-mini" style="background:#2ea44f; color:white; border:none;">＋ New</button>
         </div>
         <ul id="file-list"></ul>
     </div>
-
-    <div id="grid-wrapper">
-        <div id="example-table"></div>
-        <div id="tab-bar">
-             <button onclick="addNewTab()" style="border:none; background:none; cursor:pointer; color:var(--active-blue); font-weight:bold;">＋ New Sheet</button>
-        </div>
-    </div>
+    <div id="luckysheet"></div>
 </div>
 
 <script>
     const REPO = "patrickwoolf/my-online-drive";
     let currentFileName = null;
     let currentSha = null;
-    let table = null;
-    
-    // Default Template for New Files
-    let workbookData = { "Sheet1": [
-        {id:1, Patient:"New Entry", Diagnosis:"Double click cell to expand", Report:"Paste long text here..."}
-    ]};
-    let activeSheetName = "Sheet1";
 
-    function toggleSidebar() { 
-        document.getElementById('sidebar').classList.toggle('hidden'); 
-        setTimeout(() => { if(table) table.redraw(); }, 350);
+    function toggleSidebar() {
+        document.getElementById('sidebar').classList.toggle('collapsed');
+        // Force Luckysheet to resize when sidebar moves
+        setTimeout(() => { luckysheet.resize(); }, 350);
     }
 
     window.onload = () => {
         const saved = localStorage.getItem('gh_token');
-        if (saved) { document.getElementById('token').value = saved; connectAndRefresh(); }
-        initGrid(workbookData[activeSheetName]);
+        if (saved) { 
+            document.getElementById('token').value = saved; 
+            connectAndRefresh(); 
+        }
+        initBlankSheet();
     };
 
-    function initGrid(data) {
-        table = new Tabulator("#example-table", {
-            data: data,
-            layout: "fitDataFill", // Better for varying content sizes
-            height: "100%",
-            autoColumns: true,
-            autoColumnsDefinitions: (defs) => {
-                defs.forEach(col => { 
-                    col.editor = "textarea"; 
-                    col.headerFilter = "input"; // Added search per column
-                });
-                return defs;
-            },
-            movableColumns: true,
-            resizableRows: true,
-            // Double click to toggle cell expansion
-            cellDblClick: function(e, cell) {
-                cell.getElement().classList.toggle("expanded");
-                table.redraw(); // Re-calculate row heights
-            },
+    function initBlankSheet() {
+        luckysheet.create({ 
+            container: 'luckysheet', 
+            lang: 'en', 
+            showinfobar: false,
+            // Hide non-essential toolbar items for mobile
+            showtoolbarConfig: {
+                chart: false,
+                postil: false,
+                pivotTable: false,
+                image: false
+            }
         });
     }
 
-    function renderTabs() {
-        const tabBar = document.getElementById('tab-bar');
-        tabBar.querySelectorAll('.tab').forEach(t => t.remove());
-        Object.keys(workbookData).forEach(name => {
-            const btn = document.createElement('div');
-            btn.className = `tab ${name === activeSheetName ? 'active' : ''}`;
-            btn.innerText = name;
-            btn.onclick = () => switchTab(name);
-            tabBar.insertBefore(btn, tabBar.firstChild);
-        });
-    }
-
-    function switchTab(name) {
-        workbookData[activeSheetName] = table.getData();
-        activeSheetName = name;
-        initGrid(workbookData[name]);
-        renderTabs();
-    }
-
-    function addNewTab() {
-        const name = prompt("Sheet Name:");
-        if (!name || workbookData[name]) return;
-        workbookData[name] = [{id: Date.now(), Patient: "", Report: ""}];
-        switchTab(name);
+    async function ghApi(path, method = 'GET', body = null) {
+        const token = document.getElementById('token').value;
+        const options = {
+            method,
+            headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json' }
+        };
+        if (body) options.body = JSON.stringify(body);
+        const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, options);
+        if (!res.ok) throw new Error("GitHub Error: " + res.status);
+        return res.json();
     }
 
     async function connectAndRefresh() {
         const token = document.getElementById('token').value;
-        if (!token) return;
+        if (!token) return alert("Enter Token!");
         localStorage.setItem('gh_token', token);
-        const status = document.getElementById('status');
-        status.innerText = "Syncing...";
+        document.getElementById('status').innerText = "Sync...";
         try {
-            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/?t=${Date.now()}`, {
-                headers: { 'Authorization': `token ${token}` }
-            });
-            const data = await res.json();
+            const data = await ghApi(`?t=${Date.now()}`);
+            const files = data.filter(f => f.name.endsWith('.json'));
             const listEl = document.getElementById('file-list');
             listEl.innerHTML = '';
-            data.filter(f => f.name.endsWith('.json')).forEach(file => {
+            files.forEach(file => {
                 const li = document.createElement('li');
                 li.className = `file-item ${currentFileName === file.name ? 'active' : ''}`;
-                li.innerHTML = `<span>📄 ${file.name}</span><button class="del-btn" onclick="deleteFile('${file.name}', '${file.sha}'); event.stopPropagation();">×</button>`;
-                li.onclick = () => loadFile(file.name);
+                li.innerHTML = `
+                    <div onclick="loadFile('${file.name}')" style="font-weight:bold">📄 ${file.name}</div>
+                    <div class="file-ops">
+                        <button class="btn-mini" onclick="renameFile('${file.name}')">Ren</button>
+                        <button class="btn-mini" onclick="copyFile('${file.name}')">Copy</button>
+                        <button class="btn-mini" style="color:red" onclick="deleteFile('${file.name}', '${file.sha}')">Del</button>
+                    </div>
+                `;
                 listEl.appendChild(li);
             });
-            status.innerText = "Online";
-        } catch (e) { status.innerText = "Offline"; }
+            document.getElementById('status').innerText = "Online";
+        } catch (e) { alert(e.message); }
     }
 
     async function loadFile(name) {
+        if (window.innerWidth < 768) toggleSidebar(); // Close drawer on mobile
         document.getElementById('status').innerText = `Loading...`;
         try {
-            const token = document.getElementById('token').value;
-            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${name}?t=${Date.now()}`, {
-                headers: { 'Authorization': `token ${token}` }
-            });
-            const file = await res.json();
+            const file = await ghApi(`${name}?t=${Date.now()}`);
             currentFileName = name;
             currentSha = file.sha;
-            
             const binaryString = atob(file.content);
             const binData = new Uint8Array(binaryString.split('').map(x => x.charCodeAt(0)));
             let jsonData;
             try { jsonData = JSON.parse(pako.ungzip(binData, { to: 'string' })); }
             catch (err) { jsonData = JSON.parse(decodeURIComponent(escape(binaryString))); }
 
-            workbookData = Array.isArray(jsonData) ? { "Sheet1": jsonData } : jsonData;
-            activeSheetName = Object.keys(workbookData)[0];
-            initGrid(workbookData[activeSheetName]);
-            renderTabs();
+            luckysheet.destroy();
+            luckysheet.create({ 
+                container: 'luckysheet', 
+                data: jsonData, 
+                title: name,
+                showtoolbarConfig: { chart: false, postil: false, image: false }
+            });
             document.getElementById('status').innerText = name;
-            connectAndRefresh(); 
-        } catch (e) { alert("Load error: " + e.message); }
+        } catch (e) { alert("Load Failed: " + e.message); }
     }
 
     async function saveCurrentFile() {
-        if (!currentFileName) return alert("Open a file!");
-        workbookData[activeSheetName] = table.getData();
-        document.getElementById('status').innerText = "Compressing...";
+        if (!currentFileName) return alert("No file open!");
+        document.getElementById('status').innerText = "Saving...";
         try {
-            const token = document.getElementById('token').value;
-            const content = btoa(String.fromCharCode.apply(null, pako.gzip(JSON.stringify(workbookData))));
-            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentFileName}`, {
-                method: 'PUT',
-                headers: { 'Authorization': `token ${token}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: "Cloud Save", content, sha: currentSha })
-            });
-            const result = await res.json();
-            currentSha = result.content.sha;
-            document.getElementById('status').innerText = "🚀 Saved";
-        } catch (e) { alert("Save error: " + e.message); }
+            const data = luckysheet.getAllSheets();
+            const compressed = pako.gzip(JSON.stringify(data));
+            const content = btoa(String.fromCharCode.apply(null, compressed));
+            const res = await ghApi(currentFileName, 'PUT', { message: `Mobile Save`, content, sha: currentSha });
+            currentSha = res.content.sha;
+            document.getElementById('status').innerText = "Saved!";
+        } catch (e) { alert("Save failed: " + e.message); }
     }
 
     async function createNewFile() {
         let name = prompt("Name:");
         if (!name) return;
         if (!name.endsWith('.json')) name += '.json';
-        const token = document.getElementById('token').value;
-        const template = { "Sheet1": [{id:1, Patient:"John Doe", Diagnosis:"Example", Report:"Double click me!"}] };
-        const content = btoa(String.fromCharCode.apply(null, pako.gzip(JSON.stringify(template))));
-        await fetch(`https://api.github.com/repos/${REPO}/contents/${name}`, {
-            method: 'PUT',
-            headers: { 'Authorization': `token ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: "Create New", content })
-        });
+        const compressed = pako.gzip(JSON.stringify([{ "name": "Sheet1", "celldata": [], "status": 1 }]));
+        await ghApi(name, 'PUT', { message: `Create`, content: btoa(String.fromCharCode.apply(null, compressed)) });
+        connectAndRefresh();
+    }
+
+    async function renameFile(oldName) {
+        let newName = prompt("New name:", oldName);
+        if (!newName || newName === oldName) return;
+        if (!newName.endsWith('.json')) newName += '.json';
+        const fileData = await ghApi(oldName);
+        await ghApi(newName, 'PUT', { message: `Rename`, content: fileData.content });
+        await ghApi(oldName, 'DELETE', { message: `Cleanup`, sha: fileData.sha });
+        connectAndRefresh();
+    }
+
+    async function copyFile(sourceName) {
+        let newName = prompt("Copy name:", "Copy_" + sourceName);
+        if (!newName) return;
+        const fileData = await ghApi(sourceName);
+        await ghApi(newName, 'PUT', { message: `Copy`, content: fileData.content });
         connectAndRefresh();
     }
 
     async function deleteFile(name, sha) {
-        if (!confirm(`Delete ${name}?`)) return;
-        const token = document.getElementById('token').value;
-        await fetch(`https://api.github.com/repos/${REPO}/contents/${name}`, {
-            method: 'DELETE',
-            headers: { 'Authorization': `token ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: "Delete", sha })
-        });
+        if (!confirm(`Delete?`)) return;
+        await ghApi(name, 'DELETE', { message: `Delete`, sha });
         connectAndRefresh();
     }
 </script>
