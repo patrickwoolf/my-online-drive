@@ -3,49 +3,54 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Patrick's Advanced Drive - Mobile Fixed</title>
+    <title>Patrick's Compact Drive</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/handsontable/dist/handsontable.full.min.js"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/handsontable/dist/handsontable.full.min.css">
 
     <style>
-        :root { --sidebar-width: 280px; --gh-dark: #1f2328; --active-blue: #0969da; }
+        :root { --sidebar-width: 250px; --gh-dark: #1f2328; }
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; font-family: -apple-system, sans-serif; }
         
-        #header { height: 50px; background: var(--gh-dark); color: white; display: flex; align-items: center; padding: 0 10px; gap: 10px; z-index: 1000; }
-        #header input { background: #2d333b; border: 1px solid #444c56; color: white; padding: 6px; border-radius: 6px; width: 80px; flex-grow: 1; }
+        #header { height: 45px; background: var(--gh-dark); color: white; display: flex; align-items: center; padding: 0 8px; gap: 5px; z-index: 1000; }
+        #header input { background: #2d333b; border: 1px solid #444c56; color: white; padding: 4px; border-radius: 4px; width: 60px; flex-grow: 1; font-size: 12px; }
         
-        #main-container { display: flex; height: calc(100% - 50px); width: 100%; position: relative; }
+        #main-container { display: flex; height: calc(100% - 45px); width: 100%; position: relative; }
         
+        /* 側邊欄改為浮動，不影響表格寬度計算 */
         #sidebar { 
             width: var(--sidebar-width); background: #f6f8fa; border-right: 1px solid #d0d7de; 
             display: flex; flex-direction: column; position: absolute; height: 100%; z-index: 999;
-            transition: transform 0.3s ease;
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             transform: translateX(-100%);
+            box-shadow: 2px 0 10px rgba(0,0,0,0.1);
         }
         #sidebar.visible { transform: translateX(0); }
 
-        #file-list { flex: 1; overflow-y: auto; list-style: none; margin: 0; padding: 0; }
-        .file-item { padding: 12px 15px; border-bottom: 1px solid #e1e4e8; cursor: pointer; }
-        .file-item.active { border-left: 4px solid var(--active-blue); background: #fff; }
+        /* 表格縮放核心：強迫字體與間距變小 */
+        .handsontable { font-size: 11px !important; }
+        .handsontable th, .handsontable td { padding: 2px 4px !important; height: 22px !important; }
 
-        #grid-wrapper { flex: 1; display: flex; flex-direction: column; position: relative; overflow: hidden; width: 100%; }
-        #grid-container { flex: 1; width: 100%; height: 100%; }
+        #grid-wrapper { flex: 1; display: flex; flex-direction: column; width: 100%; height: 100%; overflow: hidden; }
+        #grid-container { width: 100% !important; height: 100% !important; }
 
-        #tab-bar { height: 40px; background: #eee; border-top: 1px solid #ccc; display: flex; align-items: center; padding: 0 10px; gap: 5px; overflow-x: auto; }
-        .tab { padding: 6px 15px; background: #ddd; border-radius: 4px 4px 0 0; cursor: pointer; font-size: 13px; border: 1px solid #ccc; border-bottom: none; white-space: nowrap; }
-        .tab.active { background: #fff; font-weight: bold; position: relative; top: 1px; }
-        .tab-add { padding: 4px 10px; cursor: pointer; background: #2ea44f; color: white; border-radius: 3px; font-weight: bold; border: none; flex-shrink: 0; }
+        #tab-bar { height: 35px; background: #eee; border-top: 1px solid #ccc; display: flex; align-items: center; padding: 0 5px; gap: 4px; overflow-x: auto; }
+        .tab { padding: 4px 10px; background: #ddd; border-radius: 4px 4px 0 0; cursor: pointer; font-size: 11px; border: 1px solid #ccc; white-space: nowrap; }
+        .tab.active { background: #fff; font-weight: bold; }
 
-        .btn { padding: 6px 10px; border-radius: 4px; border: none; font-weight: 600; cursor: pointer; font-size: 13px; }
-        #status { font-size: 11px; color: #8b949e; margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 80px; }
+        .btn { padding: 4px 8px; border-radius: 4px; border: none; font-weight: 600; cursor: pointer; font-size: 12px; }
+        #status { font-size: 10px; color: #8b949e; margin-left: auto; max-width: 60px; overflow: hidden; }
+        
+        /* 全螢幕檢視切換 */
+        .zoom-controls { position: absolute; bottom: 50px; right: 20px; z-index: 1001; display: flex; flex-direction: column; gap: 5px; }
+        .zoom-btn { width: 35px; height: 35px; border-radius: 50%; background: #0969da; color: white; border: none; box-shadow: 0 2px 5px rgba(0,0,0,0.2); font-size: 18px; }
     </style>
 </head>
 <body>
 
 <div id="header">
-    <button class="btn" style="background:#444d56; color:white;" onclick="toggleSidebar()">📁 Files</button>
+    <button class="btn" style="background:#444d56; color:white;" onclick="toggleSidebar()">📁</button>
     <input type="password" id="token" placeholder="Token">
     <button class="btn" style="background:#2ea44f; color:white;" onclick="connectAndRefresh()">🔄</button>
     <button class="btn" style="background:#0969da; color:white;" onclick="saveCurrentFile()">💾</button>
@@ -54,19 +59,23 @@
 
 <div id="main-container">
     <div id="sidebar">
-        <div style="padding:15px; font-weight:bold; border-bottom: 1px solid #ddd; display: flex; justify-content: space-between;">
-            <span>My Files</span>
-            <button onclick="createNewFile()">＋ New</button>
+        <div style="padding:10px; font-weight:bold; border-bottom: 1px solid #ddd; display: flex; justify-content: space-between; align-items: center;">
+            <span>Files</span>
+            <button class="btn" style="background:#2ea44f; color:white;" onclick="createNewFile()">＋</button>
         </div>
-        <ul id="file-list"></ul>
+        <ul id="file-list" style="list-style:none; padding:0; margin:0;"></ul>
     </div>
 
     <div id="grid-wrapper">
         <div id="grid-container"></div>
         <div id="tab-bar">
-            <button class="tab-add" onclick="addNewTab()">＋ Sheet</button>
+            <button class="tab-add" onclick="addNewTab()" style="font-size:11px; padding:2px 6px;">＋Sheet</button>
         </div>
     </div>
+</div>
+
+<div class="zoom-controls">
+    <button class="zoom-btn" onclick="fitToWindow()">🔍</button>
 </div>
 
 <script>
@@ -74,8 +83,7 @@
     let currentFileName = null;
     let currentSha = null;
     let hotInstance = null;
-    
-    let workbookData = { "Sheet1": [["", "", ""], ["", "", ""]] };
+    let workbookData = { "Sheet1": [["", "", "", ""], ["", "", "", ""]] };
     let activeSheetName = "Sheet1";
 
     function toggleSidebar() {
@@ -84,47 +92,50 @@
 
     window.onload = () => {
         const saved = localStorage.getItem('gh_token');
-        if (saved) { 
-            document.getElementById('token').value = saved; 
-            connectAndRefresh(); 
-        }
-        renderTabs();
+        if (saved) document.getElementById('token').value = saved;
         initGrid(workbookData[activeSheetName]);
+        renderTabs();
     };
 
     function initGrid(data) {
         if (hotInstance) hotInstance.destroy();
-        const container = document.getElementById('grid-container');
         
-        hotInstance = new Handsontable(container, {
+        hotInstance = new Handsontable(document.getElementById('grid-container'), {
             data: data,
             rowHeaders: true,
             colHeaders: true,
             width: '100%',
             height: '100%',
+            stretchH: 'all',        // 【關鍵】將所有欄位撐滿寬度，達到「全部都在視野中」
+            autoColumnSize: true,   // 自動計算最小寬度
             contextMenu: true,
-            manualColumnResize: true,
-            autoColumnSize: true,
-            outsideClickDeselects: false, // 點擊外部不消失選取，對手機友善
-            enterBeginsEditing: true,     // 按下 Enter 即編輯
+            outsideClickDeselects: false,
             licenseKey: 'non-commercial-and-evaluation',
             
-            // --- 行動端關鍵修正 ---
-            afterSelection: function(r, c) {
-                // 當用戶點擊儲存格時，延遲 150ms 強制進入編輯模式觸發虛擬鍵盤
+            // 行動端點擊即輸入修正
+            afterSelection: function() {
                 setTimeout(() => {
-                    if (this.getActiveEditor()) {
-                        this.getActiveEditor().beginEditing();
-                    }
+                    const editor = this.getActiveEditor();
+                    if (editor) editor.beginEditing();
                 }, 150);
             }
         });
     }
 
+    // 強制縮小並適應螢幕
+    function fitToWindow() {
+        if (!hotInstance) return;
+        // 切換 stretchH 模式：如果原本是 all 就關掉，反之亦然
+        const currentStretch = hotInstance.getSettings().stretchH;
+        hotInstance.updateSettings({
+            stretchH: currentStretch === 'all' ? 'none' : 'all'
+        });
+        document.getElementById('status').innerText = currentStretch === 'all' ? "Normal" : "Fit All";
+    }
+
     function renderTabs() {
         const tabBar = document.getElementById('tab-bar');
         tabBar.querySelectorAll('.tab').forEach(t => t.remove());
-        
         Object.keys(workbookData).forEach(name => {
             const btn = document.createElement('div');
             btn.className = `tab ${name === activeSheetName ? 'active' : ''}`;
@@ -142,90 +153,84 @@
     }
 
     function addNewTab() {
-        const name = prompt("Sheet Name:", "Sheet" + (Object.keys(workbookData).length + 1));
+        const name = prompt("Sheet Name:");
         if (!name || workbookData[name]) return;
         workbookData[name] = [["", "", ""], ["", "", ""]];
         switchTab(name);
     }
 
-    async function loadFile(name) {
-        document.getElementById('status').innerText = `Loading...`;
-        toggleSidebar(); // 選完檔案自動收起側邊欄
-        try {
-            const token = document.getElementById('token').value;
-            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${name}?t=${Date.now()}`, {
-                headers: { 'Authorization': `token ${token}` }
-            });
-            const file = await res.json();
-            currentFileName = name;
-            currentSha = file.sha;
-            
-            const binaryString = atob(file.content);
-            const binData = new Uint8Array(binaryString.split('').map(x => x.charCodeAt(0)));
-            let jsonData;
-            try { 
-                jsonData = JSON.parse(pako.ungzip(binData, { to: 'string' })); 
-            } catch (err) { 
-                jsonData = JSON.parse(decodeURIComponent(escape(binaryString))); 
-            }
-
-            workbookData = Array.isArray(jsonData) ? { "Sheet1": jsonData } : jsonData;
-            activeSheetName = Object.keys(workbookData)[0];
-            initGrid(workbookData[activeSheetName]);
-            renderTabs();
-            document.getElementById('status').innerText = name;
-        } catch (e) { alert("Load Failed: " + e.message); }
-    }
-
-    async function saveCurrentFile() {
-        if (!currentFileName) return alert("Open a file first!");
-        workbookData[activeSheetName] = hotInstance.getData();
-        
-        document.getElementById('status').innerText = "Saving...";
-        try {
-            const token = document.getElementById('token').value;
-            const compressed = pako.gzip(JSON.stringify(workbookData));
-            const content = btoa(String.fromCharCode.apply(null, compressed));
-
-            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentFileName}`, {
-                method: 'PUT',
-                headers: { 'Authorization': `token ${token}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: "Cloud Save", content, sha: currentSha })
-            });
-            const result = await res.json();
-            currentSha = result.content.sha;
-            document.getElementById('status').innerText = "🚀 Saved";
-        } catch (e) { alert("Save error: " + e.message); }
-    }
-
+    // --- GitHub API Functions ---
     async function connectAndRefresh() {
         const token = document.getElementById('token').value;
-        if (!token) return alert("Token required!");
+        if (!token) return alert("Token!");
         localStorage.setItem('gh_token', token);
         try {
             const res = await fetch(`https://api.github.com/repos/${REPO}/contents/?t=${Date.now()}`, {
                 headers: { 'Authorization': `token ${token}` }
             });
             const data = await res.json();
-            const files = data.filter(f => f.name.endsWith('.json'));
             const listEl = document.getElementById('file-list');
             listEl.innerHTML = '';
-            files.forEach(file => {
+            data.filter(f => f.name.endsWith('.json')).forEach(file => {
                 const li = document.createElement('li');
-                li.className = `file-item ${currentFileName === file.name ? 'active' : ''}`;
-                li.innerHTML = `<span onclick="loadFile('${file.name}')">📄 ${file.name}</span>`;
+                li.style.cssText = "padding:12px; border-bottom:1px solid #ddd; cursor:pointer; font-size:13px;";
+                li.innerHTML = `📄 ${file.name}`;
+                li.onclick = () => loadFile(file.name);
                 listEl.appendChild(li);
             });
-            document.getElementById('status').innerText = "Connected";
-        } catch(e) { alert("Connect Error: " + e.message); }
+            document.getElementById('status').innerText = "Sync OK";
+        } catch(e) { alert(e.message); }
+    }
+
+    async function loadFile(name) {
+        document.getElementById('status').innerText = `Loading...`;
+        toggleSidebar();
+        try {
+            const token = document.getElementById('token').value;
+            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${name}`, {
+                headers: { 'Authorization': `token ${token}` }
+            });
+            const file = await res.json();
+            currentFileName = name;
+            currentSha = file.sha;
+            const binaryString = atob(file.content);
+            const binData = new Uint8Array(binaryString.split('').map(x => x.charCodeAt(0)));
+            let jsonData;
+            try { jsonData = JSON.parse(pako.ungzip(binData, { to: 'string' })); }
+            catch (err) { jsonData = JSON.parse(decodeURIComponent(escape(binaryString))); }
+            workbookData = Array.isArray(jsonData) ? { "Sheet1": jsonData } : jsonData;
+            activeSheetName = Object.keys(workbookData)[0];
+            initGrid(workbookData[activeSheetName]);
+            renderTabs();
+            document.getElementById('status').innerText = "Loaded";
+        } catch (e) { alert(e.message); }
+    }
+
+    async function saveCurrentFile() {
+        if (!currentFileName) return alert("Open file first");
+        workbookData[activeSheetName] = hotInstance.getData();
+        document.getElementById('status').innerText = "Saving...";
+        try {
+            const token = document.getElementById('token').value;
+            const compressed = pako.gzip(JSON.stringify(workbookData));
+            const content = btoa(String.fromCharCode.apply(null, compressed));
+            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentFileName}`, {
+                method: 'PUT',
+                headers: { 'Authorization': `token ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: "Save", content, sha: currentSha })
+            });
+            const result = await res.json();
+            currentSha = result.content.sha;
+            document.getElementById('status').innerText = "🚀 Saved";
+        } catch (e) { alert(e.message); }
     }
 
     async function createNewFile() {
-        let name = prompt("New File Name:");
+        let name = prompt("Filename:");
         if (!name) return;
         if (!name.endsWith('.json')) name += '.json';
         const token = document.getElementById('token').value;
-        const compressed = pako.gzip(JSON.stringify({ "Sheet1": [["", ""], ["", ""]] }));
+        const compressed = pako.gzip(JSON.stringify({ "Sheet1": [["",""],["",""]] }));
         await fetch(`https://api.github.com/repos/${REPO}/contents/${name}`, {
             method: 'PUT',
             headers: { 'Authorization': `token ${token}`, 'Content-Type': 'application/json' },
