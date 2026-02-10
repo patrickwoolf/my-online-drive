@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-TW">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Patrick's Advanced Drive</title>
+    <title>Patrick's Advanced Drive - Mobile Fixed</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/handsontable/dist/handsontable.full.min.js"></script>
@@ -14,55 +14,57 @@
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; font-family: -apple-system, sans-serif; }
         
         #header { height: 50px; background: var(--gh-dark); color: white; display: flex; align-items: center; padding: 0 10px; gap: 10px; z-index: 1000; }
-        #header input { background: #2d333b; border: 1px solid #444c56; color: white; padding: 6px; border-radius: 6px; width: 120px; flex-grow: 1; }
+        #header input { background: #2d333b; border: 1px solid #444c56; color: white; padding: 6px; border-radius: 6px; width: 80px; flex-grow: 1; }
         
         #main-container { display: flex; height: calc(100% - 50px); width: 100%; position: relative; }
         
         #sidebar { 
             width: var(--sidebar-width); background: #f6f8fa; border-right: 1px solid #d0d7de; 
-            display: flex; flex-direction: column; position: relative; height: 100%; z-index: 999;
-            transition: margin-left 0.3s ease;
+            display: flex; flex-direction: column; position: absolute; height: 100%; z-index: 999;
+            transition: transform 0.3s ease;
+            transform: translateX(-100%);
         }
-        #sidebar.hidden { margin-left: calc(var(--sidebar-width) * -1); }
+        #sidebar.visible { transform: translateX(0); }
 
         #file-list { flex: 1; overflow-y: auto; list-style: none; margin: 0; padding: 0; }
-        .file-item { padding: 10px 15px; border-bottom: 1px solid #e1e4e8; cursor: pointer; }
+        .file-item { padding: 12px 15px; border-bottom: 1px solid #e1e4e8; cursor: pointer; }
         .file-item.active { border-left: 4px solid var(--active-blue); background: #fff; }
 
-        /* Spreadsheet Layout */
-        #grid-wrapper { flex: 1; display: flex; flex-direction: column; position: relative; overflow: hidden; }
+        #grid-wrapper { flex: 1; display: flex; flex-direction: column; position: relative; overflow: hidden; width: 100%; }
         #grid-container { flex: 1; width: 100%; height: 100%; }
 
-        /* Tabs Styling */
-        #tab-bar { height: 35px; background: #eee; border-top: 1px solid #ccc; display: flex; align-items: center; padding: 0 10px; gap: 5px; }
-        .tab { padding: 4px 12px; background: #ddd; border-radius: 4px 4px 0 0; cursor: pointer; font-size: 12px; border: 1px solid #ccc; border-bottom: none; }
+        #tab-bar { height: 40px; background: #eee; border-top: 1px solid #ccc; display: flex; align-items: center; padding: 0 10px; gap: 5px; overflow-x: auto; }
+        .tab { padding: 6px 15px; background: #ddd; border-radius: 4px 4px 0 0; cursor: pointer; font-size: 13px; border: 1px solid #ccc; border-bottom: none; white-space: nowrap; }
         .tab.active { background: #fff; font-weight: bold; position: relative; top: 1px; }
-        .tab-add { padding: 2px 8px; cursor: pointer; background: #2ea44f; color: white; border-radius: 3px; font-weight: bold; border: none; }
+        .tab-add { padding: 4px 10px; cursor: pointer; background: #2ea44f; color: white; border-radius: 3px; font-weight: bold; border: none; flex-shrink: 0; }
 
-        .btn { padding: 6px 12px; border-radius: 4px; border: none; font-weight: 600; cursor: pointer; font-size: 13px; }
-        #status { font-size: 11px; color: #8b949e; margin-left: auto; }
+        .btn { padding: 6px 10px; border-radius: 4px; border: none; font-weight: 600; cursor: pointer; font-size: 13px; }
+        #status { font-size: 11px; color: #8b949e; margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 80px; }
     </style>
 </head>
 <body>
 
 <div id="header">
-    <button class="btn" style="background:#444d56; color:white;" onclick="toggleSidebar()">📁 Toggle Files</button>
-    <input type="password" id="token" placeholder="GitHub Token">
-    <button class="btn" style="background:#2ea44f; color:white;" onclick="connectAndRefresh()">🔄 Sync</button>
-    <button class="btn" style="background:#0969da; color:white;" onclick="saveCurrentFile()">💾 Save</button>
+    <button class="btn" style="background:#444d56; color:white;" onclick="toggleSidebar()">📁 Files</button>
+    <input type="password" id="token" placeholder="Token">
+    <button class="btn" style="background:#2ea44f; color:white;" onclick="connectAndRefresh()">🔄</button>
+    <button class="btn" style="background:#0969da; color:white;" onclick="saveCurrentFile()">💾</button>
     <span id="status">Ready</span>
 </div>
 
 <div id="main-container">
     <div id="sidebar">
-        <div style="padding:15px; font-weight:bold; border-bottom: 1px solid #ddd;">My Files <button onclick="createNewFile()" style="float:right">+</button></div>
+        <div style="padding:15px; font-weight:bold; border-bottom: 1px solid #ddd; display: flex; justify-content: space-between;">
+            <span>My Files</span>
+            <button onclick="createNewFile()">＋ New</button>
+        </div>
         <ul id="file-list"></ul>
     </div>
 
     <div id="grid-wrapper">
         <div id="grid-container"></div>
         <div id="tab-bar">
-            <button class="tab-add" onclick="addNewTab()">＋ Add Sheet</button>
+            <button class="tab-add" onclick="addNewTab()">＋ Sheet</button>
         </div>
     </div>
 </div>
@@ -73,13 +75,11 @@
     let currentSha = null;
     let hotInstance = null;
     
-    // Data Structure: { "Sheet1": [[]], "Sheet2": [[]] }
     let workbookData = { "Sheet1": [["", "", ""], ["", "", ""]] };
     let activeSheetName = "Sheet1";
 
     function toggleSidebar() {
-        document.getElementById('sidebar').classList.toggle('hidden');
-        setTimeout(() => { if(hotInstance) hotInstance.render(); }, 350);
+        document.getElementById('sidebar').classList.toggle('visible');
     }
 
     window.onload = () => {
@@ -94,7 +94,9 @@
 
     function initGrid(data) {
         if (hotInstance) hotInstance.destroy();
-        hotInstance = new Handsontable(document.getElementById('grid-container'), {
+        const container = document.getElementById('grid-container');
+        
+        hotInstance = new Handsontable(container, {
             data: data,
             rowHeaders: true,
             colHeaders: true,
@@ -102,7 +104,20 @@
             height: '100%',
             contextMenu: true,
             manualColumnResize: true,
-            licenseKey: 'non-commercial-and-evaluation'
+            autoColumnSize: true,
+            outsideClickDeselects: false, // 點擊外部不消失選取，對手機友善
+            enterBeginsEditing: true,     // 按下 Enter 即編輯
+            licenseKey: 'non-commercial-and-evaluation',
+            
+            // --- 行動端關鍵修正 ---
+            afterSelection: function(r, c) {
+                // 當用戶點擊儲存格時，延遲 150ms 強制進入編輯模式觸發虛擬鍵盤
+                setTimeout(() => {
+                    if (this.getActiveEditor()) {
+                        this.getActiveEditor().beginEditing();
+                    }
+                }, 150);
+            }
         });
     }
 
@@ -120,7 +135,6 @@
     }
 
     function switchTab(name) {
-        // Save current grid to local memory before switching
         workbookData[activeSheetName] = hotInstance.getData();
         activeSheetName = name;
         initGrid(workbookData[name]);
@@ -136,6 +150,7 @@
 
     async function loadFile(name) {
         document.getElementById('status').innerText = `Loading...`;
+        toggleSidebar(); // 選完檔案自動收起側邊欄
         try {
             const token = document.getElementById('token').value;
             const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${name}?t=${Date.now()}`, {
@@ -148,16 +163,13 @@
             const binaryString = atob(file.content);
             const binData = new Uint8Array(binaryString.split('').map(x => x.charCodeAt(0)));
             let jsonData;
-            try { jsonData = JSON.parse(pako.ungzip(binData, { to: 'string' })); }
-            catch (err) { jsonData = JSON.parse(decodeURIComponent(escape(binaryString))); }
-
-            // Compatibility Check: If old file is just a single array, wrap it in a workbook object
-            if (Array.isArray(jsonData)) {
-                workbookData = { "Sheet1": jsonData };
-            } else {
-                workbookData = jsonData;
+            try { 
+                jsonData = JSON.parse(pako.ungzip(binData, { to: 'string' })); 
+            } catch (err) { 
+                jsonData = JSON.parse(decodeURIComponent(escape(binaryString))); 
             }
 
+            workbookData = Array.isArray(jsonData) ? { "Sheet1": jsonData } : jsonData;
             activeSheetName = Object.keys(workbookData)[0];
             initGrid(workbookData[activeSheetName]);
             renderTabs();
@@ -167,10 +179,9 @@
 
     async function saveCurrentFile() {
         if (!currentFileName) return alert("Open a file first!");
-        // Sync active sheet to workbook object
         workbookData[activeSheetName] = hotInstance.getData();
         
-        document.getElementById('status').innerText = "Compressing...";
+        document.getElementById('status').innerText = "Saving...";
         try {
             const token = document.getElementById('token').value;
             const compressed = pako.gzip(JSON.stringify(workbookData));
@@ -187,28 +198,30 @@
         } catch (e) { alert("Save error: " + e.message); }
     }
 
-    // --- Reuse existing Refresh/Create/Rename/Copy/Delete functions from previous version ---
     async function connectAndRefresh() {
         const token = document.getElementById('token').value;
         if (!token) return alert("Token required!");
         localStorage.setItem('gh_token', token);
-        const res = await fetch(`https://api.github.com/repos/${REPO}/contents/?t=${Date.now()}`, {
-            headers: { 'Authorization': `token ${token}` }
-        });
-        const data = await res.json();
-        const files = data.filter(f => f.name.endsWith('.json'));
-        const listEl = document.getElementById('file-list');
-        listEl.innerHTML = '';
-        files.forEach(file => {
-            const li = document.createElement('li');
-            li.className = `file-item ${currentFileName === file.name ? 'active' : ''}`;
-            li.innerHTML = `<span onclick="loadFile('${file.name}')">📄 ${file.name}</span>`;
-            listEl.appendChild(li);
-        });
+        try {
+            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/?t=${Date.now()}`, {
+                headers: { 'Authorization': `token ${token}` }
+            });
+            const data = await res.json();
+            const files = data.filter(f => f.name.endsWith('.json'));
+            const listEl = document.getElementById('file-list');
+            listEl.innerHTML = '';
+            files.forEach(file => {
+                const li = document.createElement('li');
+                li.className = `file-item ${currentFileName === file.name ? 'active' : ''}`;
+                li.innerHTML = `<span onclick="loadFile('${file.name}')">📄 ${file.name}</span>`;
+                listEl.appendChild(li);
+            });
+            document.getElementById('status').innerText = "Connected";
+        } catch(e) { alert("Connect Error: " + e.message); }
     }
 
     async function createNewFile() {
-        let name = prompt("Name:");
+        let name = prompt("New File Name:");
         if (!name) return;
         if (!name.endsWith('.json')) name += '.json';
         const token = document.getElementById('token').value;
