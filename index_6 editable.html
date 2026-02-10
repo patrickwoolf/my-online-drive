@@ -3,46 +3,73 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Simple Drive V3 - Excel Paste</title>
+    <title>Simple Drive V4 - Precise Zoom</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
     <style>
-        :root { --primary: #0969da; --success: #2ea44f; --danger: #cf222e; }
-        body { font-family: -apple-system, sans-serif; margin: 0; background: #f6f8fa; }
-        #header { background: #24292f; color: white; padding: 8px; display: flex; gap: 8px; align-items: center; position: sticky; top: 0; z-index: 100; }
-        #header input { background: #333; border: 1px solid #444; color: white; padding: 5px; border-radius: 4px; width: 60px; flex-grow: 1; }
-        #toolbar { background: #fff; border-bottom: 1px solid #d0d7de; padding: 8px; display: flex; gap: 8px; overflow-x: auto; align-items: center; }
-        .btn { padding: 6px 10px; border: 1px solid #d0d7de; border-radius: 6px; cursor: pointer; background: #f6f8fa; font-size: 12px; font-weight: 600; white-space: nowrap; }
-        #tab-bar { background: #f6f8fa; display: flex; border-bottom: 1px solid #d0d7de; overflow-x: auto; }
-        .tab { padding: 8px 16px; border-right: 1px solid #d0d7de; cursor: pointer; font-size: 12px; background: #eaeef2; white-space: nowrap; }
+        :root { --primary: #0969da; --success: #2ea44f; --danger: #cf222e; --gh-dark: #24292f; }
+        body { font-family: -apple-system, sans-serif; margin: 0; background: #f6f8fa; overflow: hidden; }
+        
+        /* Header */
+        #header { background: var(--gh-dark); color: white; padding: 8px 12px; display: flex; gap: 10px; align-items: center; height: 45px; box-sizing: border-box; }
+        #header input { background: #333; border: 1px solid #444; color: white; padding: 5px; border-radius: 4px; width: 80px; flex-grow: 1; }
+        
+        /* Toolbar & Zoom */
+        #toolbar { background: #fff; border-bottom: 1px solid #d0d7de; padding: 8px; display: flex; gap: 8px; align-items: center; overflow-x: auto; }
+        .btn { padding: 6px 12px; border: 1px solid #d0d7de; border-radius: 6px; cursor: pointer; background: #f6f8fa; font-size: 13px; font-weight: 600; white-space: nowrap; }
+        .btn:active { background: #eee; }
+        .zoom-info { font-family: monospace; font-size: 14px; min-width: 50px; text-align: center; font-weight: bold; }
+
+        /* Sidebar */
+        #sidebar { position: fixed; left: 0; top: 0; width: 260px; height: 100%; background: white; transform: translateX(-100%); transition: 0.3s; z-index: 200; box-shadow: 5px 0 15px rgba(0,0,0,0.1); }
+        #sidebar.open { transform: translateX(0); }
+        .file-item { padding: 12px 20px; border-bottom: 1px solid #eee; cursor: pointer; font-size: 14px; }
+        .file-item:hover { background: #f0f7ff; }
+
+        /* Tabs */
+        #tab-bar { background: #f6f8fa; display: flex; border-bottom: 1px solid #d0d7de; overflow-x: auto; height: 35px; }
+        .tab { padding: 8px 15px; border-right: 1px solid #d0d7de; cursor: pointer; font-size: 12px; background: #eaeef2; white-space: nowrap; }
         .tab.active { background: #fff; border-bottom: 2px solid var(--primary); font-weight: bold; }
-        #editor-container { padding: 20px; overflow: auto; height: calc(100vh - 180px); }
-        table { border-collapse: collapse; background: white; transform-origin: top left; }
-        td, th { border: 1px solid #d0d7de; padding: 6px; min-width: 80px; font-size: 14px; outline: none; }
-        th { background: #f6f8fa; font-size: 11px; color: #57606a; text-align: center; }
+        .tab-add { padding: 8px; cursor: pointer; color: var(--success); font-weight: bold; }
+
+        /* Editor Area */
+        #editor-container { padding: 20px; overflow: auto; height: calc(100vh - 125px); position: relative; }
+        table { border-collapse: collapse; background: white; transform-origin: top left; transition: transform 0.1s ease-out; }
+        td, th { border: 1px solid #d0d7de; padding: 8px; min-width: 80px; font-size: 14px; outline: none; }
+        th { background: #f6f8fa; font-size: 11px; color: #57606a; text-align: center; position: sticky; top: 0; }
         td:focus { background: #f0f7ff; box-shadow: inset 0 0 0 2px var(--primary); }
     </style>
 </head>
 <body>
 
 <div id="header">
-    <button class="btn" onclick="toggleSidebar()">📁</button>
-    <input type="password" id="token" placeholder="Token">
-    <button class="btn" onclick="fetchFiles()" style="background:var(--primary); color:white; border:none;">🔄 Sync</button>
-    <button class="btn" onclick="manualSave()" style="background:var(--success); color:white; border:none;">💾 Save</button>
-    <span id="status" style="font-size:12px; margin-left:auto;">Ready</span>
+    <button class="btn" style="background:transparent; color:white;" onclick="toggleSidebar()">📁</button>
+    <input type="password" id="token" placeholder="GitHub Token">
+    <button class="btn" style="background:var(--primary); color:white; border:none;" onclick="fetchFiles()">Sync</button>
+    <button class="btn" style="background:var(--success); color:white; border:none;" onclick="manualSave()">Save</button>
+    <span id="status" style="font-size:11px; color:#8b949e; margin-left:auto;">Ready</span>
+</div>
+
+<div id="sidebar">
+    <div style="padding:15px; font-weight:bold; background:#f6f8fa; border-bottom:1px solid #ddd; display:flex; justify-content:space-between;">
+        <span>Cloud Files</span>
+        <button onclick="createNewFile()">＋</button>
+    </div>
+    <div id="file-items"></div>
 </div>
 
 <div id="toolbar">
     <button class="btn" onclick="insertRow()">＋行</button>
     <button class="btn" onclick="insertCol()">＋列</button>
     <div style="border-left:1px solid #ddd; height:20px; margin:0 5px;"></div>
-    <button class="btn" onclick="setZoom(0.1)">10%</button>
-    <button class="btn" onclick="setZoom(1)">100%</button>
-    <button class="btn" onclick="setZoom(2)">200%</button>
-    <span style="font-size:11px; color:#666; margin-left:10px;">貼上 Excel 內容支援複數儲存格</span>
+    <button class="btn" onclick="changeZoom(-0.1)">➖</button>
+    <span class="zoom-info" id="zoom-text">100%</span>
+    <button class="btn" onclick="changeZoom(0.1)">➕</button>
+    <button class="btn" style="padding: 4px 8px; font-size: 10px;" onclick="setZoom(1.0)">Reset</button>
 </div>
 
-<div id="tab-bar"><div class="tab-add" onclick="addNewSheet()" style="padding:8px; cursor:pointer; color:green;">＋</div></div>
+<div id="tab-bar">
+    <div class="tab-add" onclick="addNewSheet()">＋</div>
+</div>
 
 <div id="editor-container">
     <table id="main-table" onpaste="handlePaste(event)"></table>
@@ -54,6 +81,7 @@
     let activeSheet = "Sheet1";
     let currentFile = null;
     let currentSha = null;
+    let currentZoom = 1.0;
     let lastSavedData = "";
 
     window.onload = () => {
@@ -64,46 +92,53 @@
         setInterval(autoSave, 30000);
     };
 
-    // --- 核心功能：處理貼上 Excel ---
+    // --- 縮放功能：每點一次 +- 10% ---
+    function changeZoom(delta) {
+        currentZoom = Math.max(0.1, Math.min(5.0, currentZoom + delta));
+        applyZoom();
+    }
+
+    function setZoom(val) {
+        currentZoom = val;
+        applyZoom();
+    }
+
+    function applyZoom() {
+        const table = document.getElementById('main-table');
+        table.style.transform = `scale(${currentZoom})`;
+        const percent = Math.round(currentZoom * 100);
+        document.getElementById('zoom-text').innerText = percent + "%";
+        document.getElementById('status').innerText = `Zoom: ${percent}%`;
+    }
+
+    // --- Excel 貼上處理 ---
     function handlePaste(e) {
         e.preventDefault();
-        // 取得剪貼簿中的文字
         const clipboardData = e.clipboardData || window.clipboardData;
         const pastedText = clipboardData.getData('text');
-        
-        // 解析 Excel 格式 (Tab 分隔列, 換行分隔行)
         const rows = pastedText.split(/\r\n|\n|\r/).map(row => row.split('\t'));
-        
         const focus = getFocus();
         if (!focus) return;
 
         let data = workbook[activeSheet];
-        
         rows.forEach((row, rIdx) => {
             const targetR = focus.r + rIdx;
-            // 如果貼上的行數超過目前表格，自動增加行
-            if (!data[targetR]) {
-                data.push(new Array(data[0].length).fill(""));
-            }
-            
+            if (!data[targetR]) data.push(new Array(data[0].length).fill(""));
             row.forEach((value, cIdx) => {
                 const targetC = focus.c + cIdx;
-                // 如果貼上的列數超過目前表格，自動增加列
-                if (targetC >= data[0].length) {
-                    data.forEach(r => r.push(""));
-                }
+                if (targetC >= data[0].length) data.forEach(r => r.push(""));
                 data[targetR][targetC] = value;
             });
         });
-
-        initTable(); // 重新渲染
-        document.getElementById('status').innerText = "已貼上數據";
+        initTable();
     }
 
     function initTable() {
         const data = workbook[activeSheet];
         const table = document.getElementById('main-table');
         table.innerHTML = "";
+        
+        // 欄位標頭 (A, B, C...)
         const thead = document.createElement('tr');
         thead.appendChild(document.createElement('th'));
         for(let i=0; i<data[0].length; i++) {
@@ -113,11 +148,13 @@
         }
         table.appendChild(thead);
 
+        // 資料行
         data.forEach((rowData, r) => {
             const tr = document.createElement('tr');
-            const th = document.createElement('th');
-            th.innerText = r + 1;
-            tr.appendChild(th);
+            const rowLabel = document.createElement('th');
+            rowLabel.innerText = r + 1;
+            tr.appendChild(rowLabel);
+            
             rowData.forEach((cellData, c) => {
                 const td = document.createElement('td');
                 td.contentEditable = "true";
@@ -129,7 +166,9 @@
         });
     }
 
-    // --- 其他輔助功能 ---
+    // --- UI 輔助 ---
+    function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); }
+
     function getFocus() {
         const sel = window.getSelection();
         if (!sel.rangeCount) return null;
@@ -137,11 +176,6 @@
         while (node && node.tagName !== 'TD') node = node.parentElement;
         if (!node) return null;
         return { r: node.parentElement.rowIndex - 1, c: node.cellIndex - 1 };
-    }
-
-    function setZoom(level) {
-        document.getElementById('main-table').style.transform = `scale(${level})`;
-        document.getElementById('status').innerText = `Zoom: ${Math.round(level*100)}%`;
     }
 
     function renderTabs() {
@@ -156,14 +190,6 @@
         });
     }
 
-    function addNewSheet() {
-        const name = prompt("分頁名稱:");
-        if (name && !workbook[name]) {
-            workbook[name] = [["","",""],["","",""]];
-            activeSheet = name; renderTabs(); initTable();
-        }
-    }
-
     function insertRow() {
         const f = getFocus() || {r: workbook[activeSheet].length};
         workbook[activeSheet].splice(f.r, 0, new Array(workbook[activeSheet][0].length).fill(""));
@@ -176,6 +202,46 @@
         initTable();
     }
 
+    // --- GitHub API & 儲存 ---
+    async function fetchFiles() {
+        const token = document.getElementById('token').value;
+        if(!token) return alert("Token Required");
+        localStorage.setItem('gh_token', token);
+        const res = await fetch(`https://api.github.com/repos/${REPO}/contents/`, {
+            headers: { 'Authorization': `token ${token}` }
+        });
+        const files = await res.json();
+        const list = document.getElementById('file-items');
+        list.innerHTML = "";
+        files.filter(f => f.name.endsWith('.json')).forEach(f => {
+            const div = document.createElement('div');
+            div.className = "file-item";
+            div.innerText = f.name;
+            div.onclick = () => loadFile(f.name);
+            list.appendChild(div);
+        });
+        document.getElementById('status').innerText = "Files Synced";
+    }
+
+    async function loadFile(name) {
+        toggleSidebar();
+        document.getElementById('status').innerText = "Loading...";
+        const token = document.getElementById('token').value;
+        const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${name}`, {
+            headers: { 'Authorization': `token ${token}` }
+        });
+        const json = await res.json();
+        currentFile = name;
+        currentSha = json.sha;
+        const content = JSON.parse(pako.ungzip(new Uint8Array(atob(json.content).split('').map(c => c.charCodeAt(0))), {to:'string'}));
+        workbook = Array.isArray(content) ? { "Sheet1": content } : content;
+        activeSheet = Object.keys(workbook)[0];
+        lastSavedData = JSON.stringify(workbook);
+        renderTabs();
+        initTable();
+        document.getElementById('status').innerText = name;
+    }
+
     async function saveToCloud() {
         try {
             const dataStr = JSON.stringify(workbook);
@@ -185,7 +251,7 @@
             const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentFile}`, {
                 method: 'PUT',
                 headers: { 'Authorization': `token ${token}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: "Save", content: base64, sha: currentSha })
+                body: JSON.stringify({ message: "AutoSave", content: base64, sha: currentSha })
             });
             const json = await res.json();
             currentSha = json.content.sha;
@@ -195,28 +261,28 @@
 
     async function autoSave() {
         if (currentFile && JSON.stringify(workbook) !== lastSavedData) {
-            document.getElementById('status').innerText = "自動儲存中...";
+            document.getElementById('status').innerText = "AutoSaving...";
             await saveToCloud();
-            document.getElementById('status').innerText = "自動儲存完成";
+            document.getElementById('status').innerText = currentFile + " (Saved)";
         }
     }
 
-    // (其餘 fetchFiles, loadFile, toggleSidebar 與 V2 相同)
-    async function fetchFiles() {
-        const token = document.getElementById('token').value;
-        if(!token) return alert("Need Token");
-        localStorage.setItem('gh_token', token);
-        const res = await fetch(`https://api.github.com/repos/${REPO}/contents/`, {
-            headers: { 'Authorization': `token ${token}` }
-        });
-        const files = await res.json();
-        const list = document.getElementById('status'); // 簡化處理
-        // 這裡可補上檔案清單 UI...
-        alert("已重新獲取清單，請點擊左側資料夾圖示");
+    function manualSave() { if(currentFile) saveToCloud(); else alert("No file opened"); }
+    function addNewSheet() {
+        const name = prompt("New Sheet Name:");
+        if (name && !workbook[name]) {
+            workbook[name] = [["","",""],["","",""]];
+            activeSheet = name; renderTabs(); initTable();
+        }
     }
-
-    async function manualSave() { if(currentFile) { await saveToCloud(); alert("儲存成功"); } }
-    function toggleSidebar() { alert("檔案功能與 V2 相同，可從左側開啟"); }
+    function createNewFile() {
+        let name = prompt("New Filename:");
+        if (!name) return;
+        if (!name.endsWith('.json')) name += '.json';
+        currentFile = name;
+        workbook = { "Sheet1": [["","",""],["","",""]] };
+        saveToCloud().then(fetchFiles);
+    }
 </script>
 </body>
 </html>
