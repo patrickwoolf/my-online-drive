@@ -1,225 +1,174 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-TW">
 <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Patrick's Advanced Drive</title>
-    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Patrick's Simple Drive</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/handsontable/dist/handsontable.full.min.js"></script>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/handsontable/dist/handsontable.full.min.css">
-
     <style>
-        :root { --sidebar-width: 280px; --gh-dark: #1f2328; --active-blue: #0969da; }
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; font-family: -apple-system, sans-serif; }
+        body { font-family: sans-serif; margin: 0; background: #f4f4f4; }
+        #header { background: #333; color: white; padding: 10px; display: flex; gap: 5px; align-items: center; position: sticky; top: 0; z-index: 10; }
+        #header input { background: #444; border: 1px solid #555; color: white; padding: 5px; width: 60px; flex-grow: 1; }
         
-        #header { height: 50px; background: var(--gh-dark); color: white; display: flex; align-items: center; padding: 0 10px; gap: 10px; z-index: 1000; }
-        #header input { background: #2d333b; border: 1px solid #444c56; color: white; padding: 6px; border-radius: 6px; width: 120px; flex-grow: 1; }
+        /* 核心表格樣式 */
+        #editor-container { padding: 10px; overflow: auto; height: calc(100vh - 120px); }
+        table { border-collapse: collapse; background: white; width: 100%; min-width: 600px; table-layout: fixed; }
+        th, td { border: 1px solid #ccc; padding: 8px; font-size: 14px; word-break: break-all; }
+        th { background: #eee; width: 40px; }
+        td:focus { outline: 2px solid #0969da; background: #f0f7ff; }
+
+        #toolbar { background: #ddd; padding: 10px; display: flex; gap: 10px; overflow-x: auto; }
+        .btn { padding: 8px 12px; border: none; border-radius: 4px; cursor: pointer; white-space: nowrap; }
+        .save-btn { background: #0969da; color: white; }
+        .add-btn { background: #2ea44f; color: white; }
         
-        #main-container { display: flex; height: calc(100% - 50px); width: 100%; position: relative; }
-        
-        #sidebar { 
-            width: var(--sidebar-width); background: #f6f8fa; border-right: 1px solid #d0d7de; 
-            display: flex; flex-direction: column; position: relative; height: 100%; z-index: 999;
-            transition: margin-left 0.3s ease;
-        }
-        #sidebar.hidden { margin-left: calc(var(--sidebar-width) * -1); }
-
-        #file-list { flex: 1; overflow-y: auto; list-style: none; margin: 0; padding: 0; }
-        .file-item { padding: 10px 15px; border-bottom: 1px solid #e1e4e8; cursor: pointer; }
-        .file-item.active { border-left: 4px solid var(--active-blue); background: #fff; }
-
-        /* Spreadsheet Layout */
-        #grid-wrapper { flex: 1; display: flex; flex-direction: column; position: relative; overflow: hidden; }
-        #grid-container { flex: 1; width: 100%; height: 100%; }
-
-        /* Tabs Styling */
-        #tab-bar { height: 35px; background: #eee; border-top: 1px solid #ccc; display: flex; align-items: center; padding: 0 10px; gap: 5px; }
-        .tab { padding: 4px 12px; background: #ddd; border-radius: 4px 4px 0 0; cursor: pointer; font-size: 12px; border: 1px solid #ccc; border-bottom: none; }
-        .tab.active { background: #fff; font-weight: bold; position: relative; top: 1px; }
-        .tab-add { padding: 2px 8px; cursor: pointer; background: #2ea44f; color: white; border-radius: 3px; font-weight: bold; border: none; }
-
-        .btn { padding: 6px 12px; border-radius: 4px; border: none; font-weight: 600; cursor: pointer; font-size: 13px; }
-        #status { font-size: 11px; color: #8b949e; margin-left: auto; }
+        #file-list { position: fixed; left: 0; top: 0; width: 250px; height: 100%; background: white; transform: translateX(-100%); transition: 0.3s; z-index: 100; box-shadow: 2px 0 5px rgba(0,0,0,0.2); padding-top: 50px; }
+        #file-list.open { transform: translateX(0); }
+        .file-item { padding: 15px; border-bottom: 1px solid #eee; cursor: pointer; }
     </style>
 </head>
 <body>
 
 <div id="header">
-    <button class="btn" style="background:#444d56; color:white;" onclick="toggleSidebar()">📁 Toggle Files</button>
-    <input type="password" id="token" placeholder="GitHub Token">
-    <button class="btn" style="background:#2ea44f; color:white;" onclick="connectAndRefresh()">🔄 Sync</button>
-    <button class="btn" style="background:#0969da; color:white;" onclick="saveCurrentFile()">💾 Save</button>
-    <span id="status">Ready</span>
+    <button class="btn" onclick="document.getElementById('file-list').classList.toggle('open')">📁</button>
+    <input type="password" id="token" placeholder="Token">
+    <button class="btn" onclick="fetchFiles()">🔄</button>
+    <button class="btn save-btn" onclick="saveFile()">💾 Save</button>
+    <span id="status" style="font-size:12px">Ready</span>
 </div>
 
-<div id="main-container">
-    <div id="sidebar">
-        <div style="padding:15px; font-weight:bold; border-bottom: 1px solid #ddd;">My Files <button onclick="createNewFile()" style="float:right">+</button></div>
-        <ul id="file-list"></ul>
-    </div>
+<div id="file-list"></div>
 
-    <div id="grid-wrapper">
-        <div id="grid-container"></div>
-        <div id="tab-bar">
-            <button class="tab-add" onclick="addNewTab()">＋ Add Sheet</button>
-        </div>
-    </div>
+<div id="toolbar">
+    <button class="btn add-btn" onclick="addRow()">＋ Row</button>
+    <button class="btn add-btn" onclick="addCol()">＋ Col</button>
+    <button class="btn" onclick="adjustZoom(0.8)">🔍 縮小</button>
+    <button class="btn" onclick="adjustZoom(1)">🔍 還原</button>
+</div>
+
+<div id="editor-container">
+    <table id="main-table"></table>
 </div>
 
 <script>
     const REPO = "patrickwoolf/my-online-drive";
-    let currentFileName = null;
+    let currentFile = null;
     let currentSha = null;
-    let hotInstance = null;
-    
-    // Data Structure: { "Sheet1": [[]], "Sheet2": [[]] }
-    let workbookData = { "Sheet1": [["", "", ""], ["", "", ""]] };
-    let activeSheetName = "Sheet1";
-
-    function toggleSidebar() {
-        document.getElementById('sidebar').classList.toggle('hidden');
-        setTimeout(() => { if(hotInstance) hotInstance.render(); }, 350);
-    }
+    let tableZoom = 1;
 
     window.onload = () => {
         const saved = localStorage.getItem('gh_token');
-        if (saved) { 
-            document.getElementById('token').value = saved; 
-            connectAndRefresh(); 
+        if (saved) {
+            document.getElementById('token').value = saved;
+            fetchFiles();
         }
-        renderTabs();
-        initGrid(workbookData[activeSheetName]);
+        initTable([["","",""],["","",""]]);
     };
 
-    function initGrid(data) {
-        if (hotInstance) hotInstance.destroy();
-        hotInstance = new Handsontable(document.getElementById('grid-container'), {
-            data: data,
-            rowHeaders: true,
-            colHeaders: true,
-            width: '100%',
-            height: '100%',
-            contextMenu: true,
-            manualColumnResize: true,
-            licenseKey: 'non-commercial-and-evaluation'
+    // 初始化表格：使用 contenteditable 讓單元格可編輯
+    function initTable(data) {
+        const table = document.getElementById('main-table');
+        table.innerHTML = "";
+        data.forEach((rowData, r) => {
+            const tr = document.createElement('tr');
+            rowData.forEach((cellData, c) => {
+                const td = document.createElement('td');
+                td.contentEditable = "true";
+                td.innerText = cellData;
+                tr.appendChild(td);
+            });
+            table.appendChild(tr);
         });
     }
 
-    function renderTabs() {
-        const tabBar = document.getElementById('tab-bar');
-        tabBar.querySelectorAll('.tab').forEach(t => t.remove());
-        
-        Object.keys(workbookData).forEach(name => {
-            const btn = document.createElement('div');
-            btn.className = `tab ${name === activeSheetName ? 'active' : ''}`;
-            btn.innerText = name;
-            btn.onclick = () => switchTab(name);
-            tabBar.insertBefore(btn, tabBar.firstChild);
+    // 讀取表格數據
+    function getTableData() {
+        return Array.from(document.querySelectorAll('tr')).map(tr => 
+            Array.from(tr.querySelectorAll('td')).map(td => td.innerText)
+        );
+    }
+
+    function addRow() {
+        const table = document.getElementById('main-table');
+        const cols = table.rows[0]?.cells.length || 3;
+        const tr = document.createElement('tr');
+        for(let i=0; i<cols; i++) {
+            const td = document.createElement('td');
+            td.contentEditable = "true";
+            tr.appendChild(td);
+        }
+        table.appendChild(tr);
+    }
+
+    function addCol() {
+        const rows = document.querySelectorAll('tr');
+        rows.forEach(tr => {
+            const td = document.createElement('td');
+            td.contentEditable = "true";
+            tr.appendChild(td);
         });
     }
 
-    function switchTab(name) {
-        // Save current grid to local memory before switching
-        workbookData[activeSheetName] = hotInstance.getData();
-        activeSheetName = name;
-        initGrid(workbookData[name]);
-        renderTabs();
+    function adjustZoom(level) {
+        document.getElementById('main-table').style.transform = `scale(${level})`;
+        document.getElementById('main-table').style.transformOrigin = "top left";
     }
 
-    function addNewTab() {
-        const name = prompt("Sheet Name:", "Sheet" + (Object.keys(workbookData).length + 1));
-        if (!name || workbookData[name]) return;
-        workbookData[name] = [["", "", ""], ["", "", ""]];
-        switchTab(name);
+    // --- GitHub 串接 ---
+    async function fetchFiles() {
+        const token = document.getElementById('token').value;
+        localStorage.setItem('gh_token', token);
+        const res = await fetch(`https://api.github.com/repos/${REPO}/contents/`, {
+            headers: { 'Authorization': `token ${token}` }
+        });
+        const files = await res.json();
+        const list = document.getElementById('file-list');
+        list.innerHTML = "";
+        files.filter(f => f.name.endsWith('.json')).forEach(f => {
+            const div = document.createElement('div');
+            div.className = "file-item";
+            div.innerText = f.name;
+            div.onclick = () => loadFile(f.name);
+            list.appendChild(div);
+        });
     }
 
     async function loadFile(name) {
-        document.getElementById('status').innerText = `Loading...`;
-        try {
-            const token = document.getElementById('token').value;
-            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${name}?t=${Date.now()}`, {
-                headers: { 'Authorization': `token ${token}` }
-            });
-            const file = await res.json();
-            currentFileName = name;
-            currentSha = file.sha;
-            
-            const binaryString = atob(file.content);
-            const binData = new Uint8Array(binaryString.split('').map(x => x.charCodeAt(0)));
-            let jsonData;
-            try { jsonData = JSON.parse(pako.ungzip(binData, { to: 'string' })); }
-            catch (err) { jsonData = JSON.parse(decodeURIComponent(escape(binaryString))); }
-
-            // Compatibility Check: If old file is just a single array, wrap it in a workbook object
-            if (Array.isArray(jsonData)) {
-                workbookData = { "Sheet1": jsonData };
-            } else {
-                workbookData = jsonData;
-            }
-
-            activeSheetName = Object.keys(workbookData)[0];
-            initGrid(workbookData[activeSheetName]);
-            renderTabs();
-            document.getElementById('status').innerText = name;
-        } catch (e) { alert("Load Failed: " + e.message); }
-    }
-
-    async function saveCurrentFile() {
-        if (!currentFileName) return alert("Open a file first!");
-        // Sync active sheet to workbook object
-        workbookData[activeSheetName] = hotInstance.getData();
-        
-        document.getElementById('status').innerText = "Compressing...";
-        try {
-            const token = document.getElementById('token').value;
-            const compressed = pako.gzip(JSON.stringify(workbookData));
-            const content = btoa(String.fromCharCode.apply(null, compressed));
-
-            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentFileName}`, {
-                method: 'PUT',
-                headers: { 'Authorization': `token ${token}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: "Cloud Save", content, sha: currentSha })
-            });
-            const result = await res.json();
-            currentSha = result.content.sha;
-            document.getElementById('status').innerText = "🚀 Saved";
-        } catch (e) { alert("Save error: " + e.message); }
-    }
-
-    // --- Reuse existing Refresh/Create/Rename/Copy/Delete functions from previous version ---
-    async function connectAndRefresh() {
+        document.getElementById('file-list').classList.remove('open');
+        document.getElementById('status').innerText = "Loading...";
         const token = document.getElementById('token').value;
-        if (!token) return alert("Token required!");
-        localStorage.setItem('gh_token', token);
-        const res = await fetch(`https://api.github.com/repos/${REPO}/contents/?t=${Date.now()}`, {
+        const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${name}`, {
             headers: { 'Authorization': `token ${token}` }
         });
-        const data = await res.json();
-        const files = data.filter(f => f.name.endsWith('.json'));
-        const listEl = document.getElementById('file-list');
-        listEl.innerHTML = '';
-        files.forEach(file => {
-            const li = document.createElement('li');
-            li.className = `file-item ${currentFileName === file.name ? 'active' : ''}`;
-            li.innerHTML = `<span onclick="loadFile('${file.name}')">📄 ${file.name}</span>`;
-            listEl.appendChild(li);
-        });
+        const json = await res.json();
+        currentFile = name;
+        currentSha = json.sha;
+        
+        const content = JSON.parse(pako.ungzip(new Uint8Array(atob(json.content).split('').map(c => c.charCodeAt(0))), {to:'string'}));
+        // 如果是舊的多分頁格式，這裡簡化取第一頁
+        const data = Array.isArray(content) ? content : Object.values(content)[0];
+        initTable(data);
+        document.getElementById('status').innerText = name;
     }
 
-    async function createNewFile() {
-        let name = prompt("Name:");
-        if (!name) return;
-        if (!name.endsWith('.json')) name += '.json';
+    async function saveFile() {
+        if(!currentFile) return alert("No file opened");
+        document.getElementById('status').innerText = "Saving...";
+        const data = getTableData();
+        const compressed = pako.gzip(JSON.stringify(data));
+        const base64 = btoa(String.fromCharCode.apply(null, compressed));
+        
         const token = document.getElementById('token').value;
-        const compressed = pako.gzip(JSON.stringify({ "Sheet1": [["", ""], ["", ""]] }));
-        await fetch(`https://api.github.com/repos/${REPO}/contents/${name}`, {
+        const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentFile}`, {
             method: 'PUT',
             headers: { 'Authorization': `token ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: "Create", content: btoa(String.fromCharCode.apply(null, compressed)) })
+            body: JSON.stringify({ message: "Save", content: base64, sha: currentSha })
         });
-        connectAndRefresh();
+        const resJson = await res.json();
+        currentSha = resJson.content.sha;
+        document.getElementById('status').innerText = "Saved!";
     }
 </script>
+
 </body>
 </html>
