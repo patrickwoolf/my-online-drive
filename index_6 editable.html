@@ -3,37 +3,48 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Simple Drive V5 - Directional Insert</title>
+    <title>Simple Drive V6 - Dynamic Sizing</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
     <style>
         :root { --primary: #0969da; --success: #2ea44f; --danger: #cf222e; --gh-dark: #24292f; }
         body { font-family: -apple-system, sans-serif; margin: 0; background: #f6f8fa; overflow: hidden; }
         
-        #header { background: var(--gh-dark); color: white; padding: 8px 12px; display: flex; gap: 10px; align-items: center; height: 45px; box-sizing: border-box; }
+        /* Header */
+        #header { background: var(--gh-dark); color: white; padding: 8px 12px; display: flex; gap: 10px; align-items: center; height: 45px; box-sizing: border-box; z-index: 300; position: relative; }
         #header input { background: #333; border: 1px solid #444; color: white; padding: 5px; border-radius: 4px; width: 80px; flex-grow: 1; }
         
-        #toolbar { background: #fff; border-bottom: 1px solid #d0d7de; padding: 8px; display: flex; gap: 5px; align-items: center; overflow-x: auto; }
+        /* Toolbar */
+        #toolbar { background: #fff; border-bottom: 1px solid #d0d7de; padding: 8px; display: flex; gap: 5px; align-items: center; overflow-x: auto; position: relative; z-index: 10; }
         .btn { padding: 6px 10px; border: 1px solid #d0d7de; border-radius: 6px; cursor: pointer; background: #f6f8fa; font-size: 12px; font-weight: 600; white-space: nowrap; }
         .btn-group { display: flex; gap: 2px; border-right: 1px solid #ddd; padding-right: 5px; margin-right: 5px; }
         
-        #sidebar { position: fixed; left: 0; top: 0; width: 260px; height: 100%; background: white; transform: translateX(-100%); transition: 0.3s; z-index: 200; box-shadow: 5px 0 15px rgba(0,0,0,0.1); }
+        /* 側邊欄與遮罩 */
+        #sidebar { position: fixed; left: 0; top: 0; width: 260px; height: 100%; background: white; transform: translateX(-100%); transition: 0.3s; z-index: 1000; box-shadow: 5px 0 15px rgba(0,0,0,0.1); }
         #sidebar.open { transform: translateX(0); }
+        #sidebar-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.3); z-index: 999; display: none; }
+        #sidebar-overlay.visible { display: block; }
         .file-item { padding: 12px 20px; border-bottom: 1px solid #eee; cursor: pointer; }
 
+        /* Tabs */
         #tab-bar { background: #f6f8fa; display: flex; border-bottom: 1px solid #d0d7de; overflow-x: auto; height: 35px; }
         .tab { padding: 8px 15px; border-right: 1px solid #d0d7de; cursor: pointer; font-size: 11px; background: #eaeef2; white-space: nowrap; }
         .tab.active { background: #fff; border-bottom: 2px solid var(--primary); font-weight: bold; }
 
+        /* Editor Area */
         #editor-container { padding: 20px; overflow: auto; height: calc(100vh - 125px); }
-        table { border-collapse: collapse; background: white; transform-origin: top left; transition: transform 0.1s; }
-        td, th { border: 1px solid #d0d7de; padding: 8px; min-width: 80px; font-size: 14px; outline: none; position: relative; }
+        table { border-collapse: collapse; background: white; transform-origin: top left; transition: transform 0.1s; table-layout: fixed; width: auto; }
+        
+        /* 預設寬高 */
+        td, th { border: 1px solid #d0d7de; padding: 8px; font-size: 14px; outline: none; box-sizing: border-box; overflow: hidden; word-break: break-all; }
         th { background: #f6f8fa; font-size: 11px; color: #57606a; text-align: center; }
-        td:focus { background: #f0f7ff; box-shadow: inset 0 0 0 2px var(--primary); z-index: 10; }
+        td:focus { background: #f0f7ff; box-shadow: inset 0 0 0 2px var(--primary); }
         
         .zoom-info { font-family: monospace; font-size: 13px; min-width: 45px; text-align: center; }
     </style>
 </head>
 <body>
+
+<div id="sidebar-overlay" onclick="toggleSidebar()"></div>
 
 <div id="header">
     <button class="btn" style="background:transparent; color:white;" onclick="toggleSidebar()">📁</button>
@@ -52,12 +63,16 @@
     <div class="btn-group">
         <button class="btn" onclick="modifyTable('row', 'before')">行↑</button>
         <button class="btn" onclick="modifyTable('row', 'after')">行↓</button>
-        <button class="btn" style="color:var(--danger)" onclick="modifyTable('row', 'delete')">－行</button>
     </div>
     <div class="btn-group">
         <button class="btn" onclick="modifyTable('col', 'before')">←列</button>
         <button class="btn" onclick="modifyTable('col', 'after')">列→</button>
-        <button class="btn" style="color:var(--danger)" onclick="modifyTable('col', 'delete')">－列</button>
+    </div>
+    <div class="btn-group">
+        <button class="btn" onclick="resizeCells('width', 14)">寬+</button>
+        <button class="btn" onclick="resizeCells('width', -14)">寬-</button>
+        <button class="btn" onclick="resizeCells('height', 14)">高+</button>
+        <button class="btn" onclick="resizeCells('height', -14)">高-</button>
     </div>
     <button class="btn" onclick="changeZoom(-0.1)">➖</button>
     <span class="zoom-info" id="zoom-text">100%</span>
@@ -78,6 +93,10 @@
     let currentSha = null;
     let currentZoom = 1.0;
     let lastSavedData = "";
+    
+    // 預設單元格尺寸
+    let cellWidth = 100;
+    let cellHeight = 35;
 
     window.onload = () => {
         const saved = localStorage.getItem('gh_token');
@@ -86,40 +105,47 @@
         setInterval(autoSave, 30000);
     };
 
-    // --- 核心：行列定向操作 ---
+    // --- 新功能：調整單元格寬高 ---
+    function resizeCells(dim, delta) {
+        if (dim === 'width') {
+            cellWidth = Math.max(40, cellWidth + delta);
+        } else {
+            cellHeight = Math.max(20, cellHeight + delta);
+        }
+        applyCellStyles();
+    }
+
+    function applyCellStyles() {
+        const cells = document.querySelectorAll('#main-table td, #main-table th');
+        cells.forEach(cell => {
+            cell.style.width = cellWidth + 'px';
+            cell.style.height = cellHeight + 'px';
+        });
+    }
+
+    // --- 核心：側邊欄開關 ---
+    function toggleSidebar() {
+        const sb = document.getElementById('sidebar');
+        const overlay = document.getElementById('sidebar-overlay');
+        const isOpen = sb.classList.toggle('open');
+        overlay.classList.toggle('visible', isOpen);
+    }
+
+    // --- 行列操作與渲染 ---
     function modifyTable(type, action) {
         const focus = getFocus();
-        if (!focus && action !== 'after') return alert("請先點選一個儲存格");
-        
         let data = workbook[activeSheet];
         const r = focus ? focus.r : data.length - 1;
         const c = focus ? focus.c : data[0].length - 1;
 
         if (type === 'row') {
-            if (action === 'before') {
-                data.splice(r, 0, new Array(data[0].length).fill(""));
-            } else if (action === 'after') {
-                data.splice(r + 1, 0, new Array(data[0].length).fill(""));
-            } else if (action === 'delete') {
-                if (data.length > 1) data.splice(r, 1);
-            }
+            if (action === 'before') data.splice(r, 0, new Array(data[0].length).fill(""));
+            else if (action === 'after') data.splice(r + 1, 0, new Array(data[0].length).fill(""));
         } else {
-            if (action === 'before') {
-                data.forEach(row => row.splice(c, 0, ""));
-            } else if (action === 'after') {
-                data.forEach(row => row.splice(c + 1, 0, ""));
-            } else if (action === 'delete') {
-                if (data[0].length > 1) data.forEach(row => row.splice(c, 1));
-            }
+            if (action === 'before') data.forEach(row => row.splice(c, 0, ""));
+            else if (action === 'after') data.forEach(row => row.splice(c + 1, 0, ""));
         }
         initTable();
-    }
-
-    // --- 縮放與表格渲染 ---
-    function changeZoom(delta) {
-        currentZoom = Math.max(0.1, Math.min(3.0, currentZoom + delta));
-        document.getElementById('main-table').style.transform = `scale(${currentZoom})`;
-        document.getElementById('zoom-text').innerText = Math.round(currentZoom * 100) + "%";
     }
 
     function initTable() {
@@ -150,10 +176,17 @@
             });
             table.appendChild(tr);
         });
+        applyCellStyles(); // 重新載入時套用目前尺寸
         renderTabs();
     }
 
-    // --- 輔助功能 ---
+    // --- 縮放與輔助 ---
+    function changeZoom(delta) {
+        currentZoom = Math.max(0.1, Math.min(3.0, currentZoom + delta));
+        document.getElementById('main-table').style.transform = `scale(${currentZoom})`;
+        document.getElementById('zoom-text').innerText = Math.round(currentZoom * 100) + "%";
+    }
+
     function getFocus() {
         const sel = window.getSelection();
         if (!sel.rangeCount) return null;
@@ -194,7 +227,7 @@
         });
     }
 
-    // --- GitHub 通訊 (fetchFiles, loadFile, saveToCloud 同前版本) ---
+    // --- GitHub 通訊 ---
     async function fetchFiles() {
         const token = document.getElementById('token').value;
         localStorage.setItem('gh_token', token);
@@ -214,7 +247,8 @@
     }
 
     async function loadFile(name) {
-        toggleSidebar(); document.getElementById('status').innerText = "Loading...";
+        toggleSidebar(); 
+        document.getElementById('status').innerText = "Loading...";
         const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${name}`, {
             headers: { 'Authorization': `token ${document.getElementById('token').value}` }
         });
@@ -224,7 +258,8 @@
         workbook = Array.isArray(content) ? { "Sheet1": content } : content;
         activeSheet = Object.keys(workbook)[0];
         lastSavedData = JSON.stringify(workbook);
-        initTable(); document.getElementById('status').innerText = name;
+        initTable(); 
+        document.getElementById('status').innerText = name;
     }
 
     async function saveToCloud() {
@@ -247,7 +282,6 @@
         }
     }
 
-    function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); }
     function manualSave() { if(currentFile) saveToCloud(); }
     function addNewSheet() {
         const name = prompt("分頁名稱:");
