@@ -3,73 +3,68 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Simple Drive V4 - Precise Zoom</title>
+    <title>Simple Drive V5 - Directional Insert</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
     <style>
         :root { --primary: #0969da; --success: #2ea44f; --danger: #cf222e; --gh-dark: #24292f; }
         body { font-family: -apple-system, sans-serif; margin: 0; background: #f6f8fa; overflow: hidden; }
         
-        /* Header */
         #header { background: var(--gh-dark); color: white; padding: 8px 12px; display: flex; gap: 10px; align-items: center; height: 45px; box-sizing: border-box; }
         #header input { background: #333; border: 1px solid #444; color: white; padding: 5px; border-radius: 4px; width: 80px; flex-grow: 1; }
         
-        /* Toolbar & Zoom */
-        #toolbar { background: #fff; border-bottom: 1px solid #d0d7de; padding: 8px; display: flex; gap: 8px; align-items: center; overflow-x: auto; }
-        .btn { padding: 6px 12px; border: 1px solid #d0d7de; border-radius: 6px; cursor: pointer; background: #f6f8fa; font-size: 13px; font-weight: 600; white-space: nowrap; }
-        .btn:active { background: #eee; }
-        .zoom-info { font-family: monospace; font-size: 14px; min-width: 50px; text-align: center; font-weight: bold; }
-
-        /* Sidebar */
+        #toolbar { background: #fff; border-bottom: 1px solid #d0d7de; padding: 8px; display: flex; gap: 5px; align-items: center; overflow-x: auto; }
+        .btn { padding: 6px 10px; border: 1px solid #d0d7de; border-radius: 6px; cursor: pointer; background: #f6f8fa; font-size: 12px; font-weight: 600; white-space: nowrap; }
+        .btn-group { display: flex; gap: 2px; border-right: 1px solid #ddd; padding-right: 5px; margin-right: 5px; }
+        
         #sidebar { position: fixed; left: 0; top: 0; width: 260px; height: 100%; background: white; transform: translateX(-100%); transition: 0.3s; z-index: 200; box-shadow: 5px 0 15px rgba(0,0,0,0.1); }
         #sidebar.open { transform: translateX(0); }
-        .file-item { padding: 12px 20px; border-bottom: 1px solid #eee; cursor: pointer; font-size: 14px; }
-        .file-item:hover { background: #f0f7ff; }
+        .file-item { padding: 12px 20px; border-bottom: 1px solid #eee; cursor: pointer; }
 
-        /* Tabs */
         #tab-bar { background: #f6f8fa; display: flex; border-bottom: 1px solid #d0d7de; overflow-x: auto; height: 35px; }
-        .tab { padding: 8px 15px; border-right: 1px solid #d0d7de; cursor: pointer; font-size: 12px; background: #eaeef2; white-space: nowrap; }
+        .tab { padding: 8px 15px; border-right: 1px solid #d0d7de; cursor: pointer; font-size: 11px; background: #eaeef2; white-space: nowrap; }
         .tab.active { background: #fff; border-bottom: 2px solid var(--primary); font-weight: bold; }
-        .tab-add { padding: 8px; cursor: pointer; color: var(--success); font-weight: bold; }
 
-        /* Editor Area */
-        #editor-container { padding: 20px; overflow: auto; height: calc(100vh - 125px); position: relative; }
-        table { border-collapse: collapse; background: white; transform-origin: top left; transition: transform 0.1s ease-out; }
-        td, th { border: 1px solid #d0d7de; padding: 8px; min-width: 80px; font-size: 14px; outline: none; }
-        th { background: #f6f8fa; font-size: 11px; color: #57606a; text-align: center; position: sticky; top: 0; }
-        td:focus { background: #f0f7ff; box-shadow: inset 0 0 0 2px var(--primary); }
+        #editor-container { padding: 20px; overflow: auto; height: calc(100vh - 125px); }
+        table { border-collapse: collapse; background: white; transform-origin: top left; transition: transform 0.1s; }
+        td, th { border: 1px solid #d0d7de; padding: 8px; min-width: 80px; font-size: 14px; outline: none; position: relative; }
+        th { background: #f6f8fa; font-size: 11px; color: #57606a; text-align: center; }
+        td:focus { background: #f0f7ff; box-shadow: inset 0 0 0 2px var(--primary); z-index: 10; }
+        
+        .zoom-info { font-family: monospace; font-size: 13px; min-width: 45px; text-align: center; }
     </style>
 </head>
 <body>
 
 <div id="header">
     <button class="btn" style="background:transparent; color:white;" onclick="toggleSidebar()">📁</button>
-    <input type="password" id="token" placeholder="GitHub Token">
+    <input type="password" id="token" placeholder="Token">
     <button class="btn" style="background:var(--primary); color:white; border:none;" onclick="fetchFiles()">Sync</button>
     <button class="btn" style="background:var(--success); color:white; border:none;" onclick="manualSave()">Save</button>
-    <span id="status" style="font-size:11px; color:#8b949e; margin-left:auto;">Ready</span>
+    <span id="status" style="font-size:11px; margin-left:auto;">Ready</span>
 </div>
 
 <div id="sidebar">
-    <div style="padding:15px; font-weight:bold; background:#f6f8fa; border-bottom:1px solid #ddd; display:flex; justify-content:space-between;">
-        <span>Cloud Files</span>
-        <button onclick="createNewFile()">＋</button>
-    </div>
+    <div style="padding:15px; font-weight:bold; background:#f6f8fa; border-bottom:1px solid #ddd;">Cloud Files <button onclick="createNewFile()" style="float:right">+</button></div>
     <div id="file-items"></div>
 </div>
 
 <div id="toolbar">
-    <button class="btn" onclick="insertRow()">＋行</button>
-    <button class="btn" onclick="insertCol()">＋列</button>
-    <div style="border-left:1px solid #ddd; height:20px; margin:0 5px;"></div>
+    <div class="btn-group">
+        <button class="btn" onclick="modifyTable('row', 'before')">行↑</button>
+        <button class="btn" onclick="modifyTable('row', 'after')">行↓</button>
+        <button class="btn" style="color:var(--danger)" onclick="modifyTable('row', 'delete')">－行</button>
+    </div>
+    <div class="btn-group">
+        <button class="btn" onclick="modifyTable('col', 'before')">←列</button>
+        <button class="btn" onclick="modifyTable('col', 'after')">列→</button>
+        <button class="btn" style="color:var(--danger)" onclick="modifyTable('col', 'delete')">－列</button>
+    </div>
     <button class="btn" onclick="changeZoom(-0.1)">➖</button>
     <span class="zoom-info" id="zoom-text">100%</span>
     <button class="btn" onclick="changeZoom(0.1)">➕</button>
-    <button class="btn" style="padding: 4px 8px; font-size: 10px;" onclick="setZoom(1.0)">Reset</button>
 </div>
 
-<div id="tab-bar">
-    <div class="tab-add" onclick="addNewSheet()">＋</div>
-</div>
+<div id="tab-bar"><div class="tab-add" onclick="addNewSheet()" style="padding:8px; cursor:pointer; color:green;">＋</div></div>
 
 <div id="editor-container">
     <table id="main-table" onpaste="handlePaste(event)"></table>
@@ -87,50 +82,44 @@
     window.onload = () => {
         const saved = localStorage.getItem('gh_token');
         if (saved) { document.getElementById('token').value = saved; fetchFiles(); }
-        renderTabs();
         initTable();
         setInterval(autoSave, 30000);
     };
 
-    // --- 縮放功能：每點一次 +- 10% ---
-    function changeZoom(delta) {
-        currentZoom = Math.max(0.1, Math.min(5.0, currentZoom + delta));
-        applyZoom();
-    }
-
-    function setZoom(val) {
-        currentZoom = val;
-        applyZoom();
-    }
-
-    function applyZoom() {
-        const table = document.getElementById('main-table');
-        table.style.transform = `scale(${currentZoom})`;
-        const percent = Math.round(currentZoom * 100);
-        document.getElementById('zoom-text').innerText = percent + "%";
-        document.getElementById('status').innerText = `Zoom: ${percent}%`;
-    }
-
-    // --- Excel 貼上處理 ---
-    function handlePaste(e) {
-        e.preventDefault();
-        const clipboardData = e.clipboardData || window.clipboardData;
-        const pastedText = clipboardData.getData('text');
-        const rows = pastedText.split(/\r\n|\n|\r/).map(row => row.split('\t'));
+    // --- 核心：行列定向操作 ---
+    function modifyTable(type, action) {
         const focus = getFocus();
-        if (!focus) return;
-
+        if (!focus && action !== 'after') return alert("請先點選一個儲存格");
+        
         let data = workbook[activeSheet];
-        rows.forEach((row, rIdx) => {
-            const targetR = focus.r + rIdx;
-            if (!data[targetR]) data.push(new Array(data[0].length).fill(""));
-            row.forEach((value, cIdx) => {
-                const targetC = focus.c + cIdx;
-                if (targetC >= data[0].length) data.forEach(r => r.push(""));
-                data[targetR][targetC] = value;
-            });
-        });
+        const r = focus ? focus.r : data.length - 1;
+        const c = focus ? focus.c : data[0].length - 1;
+
+        if (type === 'row') {
+            if (action === 'before') {
+                data.splice(r, 0, new Array(data[0].length).fill(""));
+            } else if (action === 'after') {
+                data.splice(r + 1, 0, new Array(data[0].length).fill(""));
+            } else if (action === 'delete') {
+                if (data.length > 1) data.splice(r, 1);
+            }
+        } else {
+            if (action === 'before') {
+                data.forEach(row => row.splice(c, 0, ""));
+            } else if (action === 'after') {
+                data.forEach(row => row.splice(c + 1, 0, ""));
+            } else if (action === 'delete') {
+                if (data[0].length > 1) data.forEach(row => row.splice(c, 1));
+            }
+        }
         initTable();
+    }
+
+    // --- 縮放與表格渲染 ---
+    function changeZoom(delta) {
+        currentZoom = Math.max(0.1, Math.min(3.0, currentZoom + delta));
+        document.getElementById('main-table').style.transform = `scale(${currentZoom})`;
+        document.getElementById('zoom-text').innerText = Math.round(currentZoom * 100) + "%";
     }
 
     function initTable() {
@@ -138,7 +127,6 @@
         const table = document.getElementById('main-table');
         table.innerHTML = "";
         
-        // 欄位標頭 (A, B, C...)
         const thead = document.createElement('tr');
         thead.appendChild(document.createElement('th'));
         for(let i=0; i<data[0].length; i++) {
@@ -148,13 +136,11 @@
         }
         table.appendChild(thead);
 
-        // 資料行
         data.forEach((rowData, r) => {
             const tr = document.createElement('tr');
-            const rowLabel = document.createElement('th');
-            rowLabel.innerText = r + 1;
-            tr.appendChild(rowLabel);
-            
+            const th = document.createElement('th');
+            th.innerText = r + 1;
+            tr.appendChild(th);
             rowData.forEach((cellData, c) => {
                 const td = document.createElement('td');
                 td.contentEditable = "true";
@@ -164,11 +150,10 @@
             });
             table.appendChild(tr);
         });
+        renderTabs();
     }
 
-    // --- UI 輔助 ---
-    function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); }
-
+    // --- 輔助功能 ---
     function getFocus() {
         const sel = window.getSelection();
         if (!sel.rangeCount) return null;
@@ -178,6 +163,25 @@
         return { r: node.parentElement.rowIndex - 1, c: node.cellIndex - 1 };
     }
 
+    function handlePaste(e) {
+        e.preventDefault();
+        const text = (e.clipboardData || window.clipboardData).getData('text');
+        const rows = text.split(/\r\n|\n|\r/).map(row => row.split('\t'));
+        const focus = getFocus();
+        if (!focus) return;
+        let data = workbook[activeSheet];
+        rows.forEach((row, rIdx) => {
+            const tr = focus.r + rIdx;
+            if (!data[tr]) data.push(new Array(data[0].length).fill(""));
+            row.forEach((val, cIdx) => {
+                const tc = focus.c + cIdx;
+                if (tc >= data[0].length) data.forEach(r => r.push(""));
+                data[tr][tc] = val;
+            });
+        });
+        initTable();
+    }
+
     function renderTabs() {
         const tabBar = document.getElementById('tab-bar');
         tabBar.querySelectorAll('.tab').forEach(t => t.remove());
@@ -185,27 +189,14 @@
             const div = document.createElement('div');
             div.className = `tab ${name === activeSheet ? 'active' : ''}`;
             div.innerText = name;
-            div.onclick = () => { activeSheet = name; renderTabs(); initTable(); };
+            div.onclick = () => { activeSheet = name; initTable(); };
             tabBar.insertBefore(div, tabBar.firstChild);
         });
     }
 
-    function insertRow() {
-        const f = getFocus() || {r: workbook[activeSheet].length};
-        workbook[activeSheet].splice(f.r, 0, new Array(workbook[activeSheet][0].length).fill(""));
-        initTable();
-    }
-
-    function insertCol() {
-        const f = getFocus() || {c: workbook[activeSheet][0].length};
-        workbook[activeSheet].forEach(r => r.splice(f.c, 0, ""));
-        initTable();
-    }
-
-    // --- GitHub API & 儲存 ---
+    // --- GitHub 通訊 (fetchFiles, loadFile, saveToCloud 同前版本) ---
     async function fetchFiles() {
         const token = document.getElementById('token').value;
-        if(!token) return alert("Token Required");
         localStorage.setItem('gh_token', token);
         const res = await fetch(`https://api.github.com/repos/${REPO}/contents/`, {
             headers: { 'Authorization': `token ${token}` }
@@ -215,72 +206,57 @@
         list.innerHTML = "";
         files.filter(f => f.name.endsWith('.json')).forEach(f => {
             const div = document.createElement('div');
-            div.className = "file-item";
-            div.innerText = f.name;
+            div.className = "file-item"; div.innerText = f.name;
             div.onclick = () => loadFile(f.name);
             list.appendChild(div);
         });
-        document.getElementById('status').innerText = "Files Synced";
+        document.getElementById('status').innerText = "Ready";
     }
 
     async function loadFile(name) {
-        toggleSidebar();
-        document.getElementById('status').innerText = "Loading...";
-        const token = document.getElementById('token').value;
+        toggleSidebar(); document.getElementById('status').innerText = "Loading...";
         const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${name}`, {
-            headers: { 'Authorization': `token ${token}` }
+            headers: { 'Authorization': `token ${document.getElementById('token').value}` }
         });
         const json = await res.json();
-        currentFile = name;
-        currentSha = json.sha;
+        currentFile = name; currentSha = json.sha;
         const content = JSON.parse(pako.ungzip(new Uint8Array(atob(json.content).split('').map(c => c.charCodeAt(0))), {to:'string'}));
         workbook = Array.isArray(content) ? { "Sheet1": content } : content;
         activeSheet = Object.keys(workbook)[0];
         lastSavedData = JSON.stringify(workbook);
-        renderTabs();
-        initTable();
-        document.getElementById('status').innerText = name;
+        initTable(); document.getElementById('status').innerText = name;
     }
 
     async function saveToCloud() {
-        try {
-            const dataStr = JSON.stringify(workbook);
-            const compressed = pako.gzip(dataStr);
-            const base64 = btoa(String.fromCharCode.apply(null, compressed));
-            const token = document.getElementById('token').value;
-            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentFile}`, {
-                method: 'PUT',
-                headers: { 'Authorization': `token ${token}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: "AutoSave", content: base64, sha: currentSha })
-            });
-            const json = await res.json();
-            currentSha = json.content.sha;
-            lastSavedData = dataStr;
-        } catch (e) { console.error(e); }
+        const dataStr = JSON.stringify(workbook);
+        const compressed = pako.gzip(dataStr);
+        const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentFile}`, {
+            method: 'PUT',
+            headers: { 'Authorization': `token ${document.getElementById('token').value}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: "AutoSave", content: btoa(String.fromCharCode.apply(null, compressed)), sha: currentSha })
+        });
+        const json = await res.json();
+        currentSha = json.content.sha; lastSavedData = dataStr;
     }
 
     async function autoSave() {
         if (currentFile && JSON.stringify(workbook) !== lastSavedData) {
-            document.getElementById('status').innerText = "AutoSaving...";
+            document.getElementById('status').innerText = "Saving...";
             await saveToCloud();
-            document.getElementById('status').innerText = currentFile + " (Saved)";
+            document.getElementById('status').innerText = currentFile;
         }
     }
 
-    function manualSave() { if(currentFile) saveToCloud(); else alert("No file opened"); }
+    function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); }
+    function manualSave() { if(currentFile) saveToCloud(); }
     function addNewSheet() {
-        const name = prompt("New Sheet Name:");
-        if (name && !workbook[name]) {
-            workbook[name] = [["","",""],["","",""]];
-            activeSheet = name; renderTabs(); initTable();
-        }
+        const name = prompt("分頁名稱:");
+        if (name && !workbook[name]) { workbook[name] = [["","",""]]; activeSheet = name; initTable(); }
     }
     function createNewFile() {
-        let name = prompt("New Filename:");
-        if (!name) return;
+        let name = prompt("新檔名:"); if (!name) return;
         if (!name.endsWith('.json')) name += '.json';
-        currentFile = name;
-        workbook = { "Sheet1": [["","",""],["","",""]] };
+        currentFile = name; workbook = { "Sheet1": [["",""]] };
         saveToCloud().then(fetchFiles);
     }
 </script>
