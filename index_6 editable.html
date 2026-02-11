@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Simple Drive V16 - Full Resize Controls</title>
+    <title>Simple Drive V17 - Excel Import Assistant</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
@@ -30,12 +30,25 @@
         th { background: #f6f8fa; font-size: 11px; color: #57606a; text-align: center; }
         td.selected { background: var(--select-bg) !important; outline: 1px solid var(--select-border); z-index: 2; }
         td:focus { background: white; outline: 2px solid var(--primary); z-index: 5; }
+        /* Modal for Excel Import */
+        #import-modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; border-radius: 8px; padding: 20px; z-index: 2000; box-shadow: 0 5px 30px rgba(0,0,0,0.3); display: none; width: 400px; }
+        #import-modal textarea { width: 100%; height: 200px; margin: 10px 0; font-family: monospace; font-size: 12px; }
         .zoom-info { font-family: monospace; font-size: 13px; min-width: 45px; text-align: center; }
     </style>
 </head>
 <body>
 
 <div id="sidebar-overlay" onclick="toggleSidebar()"></div>
+
+<div id="import-modal">
+    <div style="font-weight:bold; margin-bottom:10px;">Excel 貼上助手</div>
+    <div style="font-size:12px; color:#666;">請從 Excel 複製內容後在此貼上 (Ctrl+V)</div>
+    <textarea id="import-area" placeholder="在此貼上內容..."></textarea>
+    <div style="text-align:right; gap:10px; display:flex; justify-content: flex-end;">
+        <button class="btn" onclick="closeImport()">取消</button>
+        <button class="btn" style="background:var(--primary); color:white;" onclick="processExcelImport()">確認匯入</button>
+    </div>
+</div>
 
 <div id="header">
     <button class="btn" style="background:transparent; color:white;" onclick="toggleSidebar()">📁</button>
@@ -58,7 +71,7 @@
         </div>
     </div>
     <div class="btn-group">
-        <div><span class="group-label">增刪行列</span>
+        <div><span class="group-label">編輯</span>
             <button class="btn" onclick="modifyTable('row', 'before')">行↑</button>
             <button class="btn" onclick="modifyTable('row', 'after')">行↓</button>
             <button class="btn" style="color:var(--danger)" onclick="deleteSelected('row')">✂️行</button>
@@ -68,7 +81,7 @@
         </div>
     </div>
     <div class="btn-group">
-        <div><span class="group-label">選中項大小</span>
+        <div><span class="group-label">大小縮放</span>
             <button class="btn" onclick="resizeSelection('row', 10)">高+</button>
             <button class="btn" onclick="resizeSelection('row', -10)">高-</button>
             <button class="btn" onclick="resizeSelection('col', 20)">寬+</button>
@@ -76,16 +89,13 @@
         </div>
     </div>
     <div class="btn-group">
-        <div><span class="group-label">全部大小</span>
-            <button class="btn" onclick="resizeAll('row', 5)">高+</button>
-            <button class="btn" onclick="resizeAll('row', -5)">高-</button>
-            <button class="btn" onclick="resizeAll('col', 10)">寬+</button>
-            <button class="btn" onclick="resizeAll('col', -10)">寬-</button>
+        <div><span class="group-label">數據匯入</span>
+            <button class="btn" onclick="openImport()" style="background:#eef; border-color:#99a;">📋 From Excel</button>
+            <button class="btn" onclick="exportToExcel()" style="background:#1d6f42; color:white; border:none;">📥 To Excel</button>
         </div>
     </div>
     <div class="btn-group">
-        <div><span class="group-label">工具</span>
-            <button class="btn" onclick="exportToExcel()" style="background:#1d6f42; color:white; border:none;">📥 Excel</button>
+        <div><span class="group-label">檢視</span>
             <button class="btn" onclick="changeZoom(-0.1)">➖</button>
             <span class="zoom-info" id="zoom-text">100%</span>
             <button class="btn" onclick="changeZoom(0.1)">➕</button>
@@ -96,7 +106,7 @@
 <div id="tab-bar"><div class="tab-add" onclick="addNewSheet()" style="padding:8px; cursor:pointer; color:green;">＋</div></div>
 
 <div id="editor-container">
-    <table id="main-table" onpaste="handlePaste(event)"></table>
+    <table id="main-table"></table>
 </div>
 
 <script>
@@ -120,32 +130,54 @@
         document.addEventListener('mouseup', () => { isSelecting = false; });
     };
 
-    // --- 大小調整邏輯 ---
-    function resizeSelection(type, delta) {
-        const range = getSelectedRange() || (getFocus() ? {rMin: getFocus().r, rMax: getFocus().r, cMin: getFocus().c, cMax: getFocus().c} : null);
-        if (!range) return;
-        const sheet = workbook[activeSheet];
-        if (type === 'row') {
-            for (let i = range.rMin; i <= range.rMax; i++) sheet.rowH[i] = Math.max(20, (sheet.rowH[i] || 35) + delta);
-        } else {
-            for (let i = range.cMin; i <= range.cMax; i++) sheet.colW[i] = Math.max(40, (sheet.colW[i] || 100) + delta);
-        }
-        renderStyles();
+    // --- Excel 貼上助手功能 ---
+    function openImport() {
+        document.getElementById('import-modal').style.display = 'block';
+        document.getElementById('sidebar-overlay').style.display = 'block';
+        document.getElementById('import-area').value = "";
+        document.getElementById('import-area').focus();
     }
 
-    function resizeAll(type, delta) {
-        const sheet = workbook[activeSheet];
-        if (type === 'row') {
-            sheet.rowH = sheet.rowH.map(h => Math.max(20, h + delta));
-            if (sheet.rowH.length === 0) sheet.rowH = new Array(sheet.data.length).fill(35 + delta);
-        } else {
-            sheet.colW = sheet.colW.map(w => Math.max(40, w + delta));
-            if (sheet.colW.length === 0) sheet.colW = new Array(sheet.data[0].length).fill(100 + delta);
+    function closeImport() {
+        document.getElementById('import-modal').style.display = 'none';
+        if (!document.getElementById('sidebar').classList.contains('open')) {
+            document.getElementById('sidebar-overlay').style.display = 'none';
         }
-        renderStyles();
     }
 
-    // --- Excel 貼上解析器 ---
+    function processExcelImport() {
+        const text = document.getElementById('import-area').value;
+        if (!text) return closeImport();
+
+        const range = getSelectedRange(); const focus = getFocus();
+        const startR = range ? range.rMin : (focus ? focus.r : 0);
+        const startC = range ? range.cMin : (focus ? focus.c : 0);
+
+        pushHistory();
+        const rows = parseTSV(text);
+        let sheet = workbook[activeSheet];
+
+        rows.forEach((rowData, rIdx) => {
+            const tr = startR + rIdx;
+            while (tr >= sheet.data.length) {
+                sheet.data.push(new Array(sheet.data[0].length).fill(""));
+                sheet.rowH.push(35);
+            }
+            rowData.forEach((val, cIdx) => {
+                const tc = startC + cIdx;
+                while (tc >= sheet.data[0].length) {
+                    sheet.data.forEach(r => r.push(""));
+                    sheet.colW.push(100);
+                }
+                sheet.data[tr][tc] = val;
+            });
+        });
+
+        initTable();
+        closeImport();
+    }
+
+    // TSV 解析邏輯
     function parseTSV(text) {
         const result = []; let row = []; let cell = ''; let inQuotes = false;
         for (let i = 0; i < text.length; i++) {
@@ -162,28 +194,7 @@
         return result;
     }
 
-    function handlePaste(e) {
-        e.preventDefault();
-        const text = (e.clipboardData || window.clipboardData).getData('text');
-        if (!text) return;
-        const range = getSelectedRange(); const focus = getFocus();
-        const startR = range ? range.rMin : (focus ? focus.r : 0);
-        const startC = range ? range.cMin : (focus ? focus.c : 0);
-        pushHistory();
-        const rows = parseTSV(text);
-        let sheet = workbook[activeSheet];
-        rows.forEach((rowData, rIdx) => {
-            const tr = startR + rIdx;
-            if (!sheet.data[tr]) { sheet.data[tr] = new Array(sheet.data[0].length).fill(""); sheet.rowH[tr] = 35; }
-            rowData.forEach((val, cIdx) => {
-                const tc = startC + cIdx;
-                if (tc >= sheet.data[0].length) { sheet.data.forEach(r => r.push("")); sheet.colW.push(100); }
-                sheet.data[tr][tc] = val;
-            });
-        });
-        initTable();
-    }
-
+    // --- 表格渲染與基本邏輯 ---
     function initTable() {
         const sheet = workbook[activeSheet];
         const table = document.getElementById('main-table');
@@ -201,10 +212,12 @@
             tr.appendChild(th);
             rowData.forEach((cellData, c) => {
                 const td = document.createElement('td');
-                td.contentEditable = "true"; td.innerText = cellData;
+                td.contentEditable = "true"; 
+                td.innerText = cellData;
                 td.dataset.r = r; td.dataset.c = c;
                 td.onmousedown = (e) => { isSelecting = true; startCell = {r, c}; endCell = {r, c}; highlightRange(); };
                 td.onmouseover = () => { if(isSelecting) { endCell = {r, c}; highlightRange(); } };
+                // 失去焦點時同步數據（保留原生的貼上功能，這裡會讀取貼完後的文字）
                 td.onblur = () => { if(sheet.data[r][c] !== td.innerText) { pushHistory(); sheet.data[r][c] = td.innerText; } };
                 tr.appendChild(td);
             });
@@ -218,7 +231,6 @@
         const sheet = workbook[activeSheet];
         const rows = document.getElementById('main-table').rows;
         if(!rows.length) return;
-        // Apply Column Widths
         for (let j = 0; j < sheet.data[0].length; j++) {
             const w = (sheet.colW[j] || 100) + 'px';
             for (let i = 0; i < rows.length; i++) {
@@ -226,7 +238,6 @@
                 if (cell) { cell.style.width = w; cell.style.minWidth = w; cell.style.maxWidth = w; }
             }
         }
-        // Apply Row Heights
         for (let i = 0; i < sheet.data.length; i++) {
             const h = (sheet.rowH[i] || 35) + 'px';
             const row = rows[i+1];
@@ -234,8 +245,21 @@
         }
     }
 
-    // --- 輔助功能 ---
+    function resizeSelection(type, delta) {
+        const range = getSelectedRange() || (getFocus() ? {rMin: getFocus().r, rMax: getFocus().r, cMin: getFocus().c, cMax: getFocus().c} : null);
+        if (!range) return;
+        const sheet = workbook[activeSheet];
+        if (type === 'row') {
+            for (let i = range.rMin; i <= range.rMax; i++) sheet.rowH[i] = Math.max(20, (sheet.rowH[i] || 35) + delta);
+        } else {
+            for (let i = range.cMin; i <= range.cMax; i++) sheet.colW[i] = Math.max(40, (sheet.colW[i] || 100) + delta);
+        }
+        renderStyles();
+    }
+
+    // --- 選取範圍與輔助 ---
     function highlightRange() {
+        if(!startCell || !endCell) return;
         const rMin = Math.min(startCell.r, endCell.r), rMax = Math.max(startCell.r, endCell.r);
         const cMin = Math.min(startCell.c, endCell.c), cMax = Math.max(startCell.c, endCell.c);
         document.querySelectorAll('td').forEach(td => {
@@ -265,6 +289,17 @@
         return { r: parseInt(node.dataset.r), c: parseInt(node.dataset.c) };
     }
 
+    function clearSelectedCells() {
+        const selected = document.querySelectorAll('td.selected');
+        if (!selected.length) return;
+        pushHistory();
+        selected.forEach(td => {
+            workbook[activeSheet].data[td.dataset.r][td.dataset.c] = "";
+            td.innerText = "";
+        });
+    }
+
+    // --- 歷史與同步 ---
     function undo() { if (undoStack.length) { redoStack.push(JSON.stringify(workbook)); workbook = JSON.parse(undoStack.pop()); initTable(); updateHistoryButtons(); } }
     function redo() { if (redoStack.length) { undoStack.push(JSON.stringify(workbook)); workbook = JSON.parse(redoStack.pop()); initTable(); updateHistoryButtons(); } }
     function pushHistory() { undoStack.push(JSON.stringify(workbook)); redoStack = []; if (undoStack.length > 50) undoStack.shift(); updateHistoryButtons(); }
@@ -299,7 +334,7 @@
     }
 
     function changeZoom(delta) { currentZoom = Math.max(0.1, Math.min(3, currentZoom + delta)); document.getElementById('main-table').style.transform = `scale(${currentZoom})`; document.getElementById('zoom-text').innerText = Math.round(currentZoom*100)+"%"; }
-    function toggleSidebar() { const open = document.getElementById('sidebar').classList.toggle('open'); document.getElementById('sidebar-overlay').classList.toggle('visible', open); }
+    function toggleSidebar() { const open = document.getElementById('sidebar').classList.toggle('open'); document.getElementById('sidebar-overlay').style.display = open ? 'block' : 'none'; }
     function renderTabs() {
         const bar = document.getElementById('tab-bar'); bar.querySelectorAll('.tab').forEach(t => t.remove());
         Object.keys(workbook).forEach(name => {
@@ -326,7 +361,7 @@
         const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${name}`, { headers: { 'Authorization': `token ${document.getElementById('token').value}` } });
         const json = await res.json(); currentFile = name; currentSha = json.sha;
         const content = JSON.parse(pako.ungzip(new Uint8Array(atob(json.content).split('').map(c => c.charCodeAt(0))), {to:'string'}));
-        workbook = Array.isArray(content) ? { "Sheet1": { data: content, rowH: [], colW: [] } } : content;
+        workbook = content;
         activeSheet = Object.keys(workbook)[0]; lastSavedData = JSON.stringify(workbook);
         initTable(); document.getElementById('status').innerText = name;
     }
