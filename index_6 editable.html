@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Simple Drive V15</title>
+    <title>Simple Drive V16 - Full Resize Controls</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
@@ -11,16 +11,16 @@
         body { font-family: -apple-system, sans-serif; margin: 0; background: #f6f8fa; overflow: hidden; user-select: none; }
         #header { background: var(--gh-dark); color: white; padding: 8px 12px; display: flex; gap: 10px; align-items: center; height: 45px; box-sizing: border-box; z-index: 300; position: relative; }
         #header input { background: #333; border: 1px solid #444; color: white; padding: 5px; border-radius: 4px; width: 80px; flex-grow: 1; }
-        #toolbar { background: #fff; border-bottom: 1px solid #d0d7de; padding: 8px; display: flex; gap: 5px; align-items: center; overflow-x: auto; position: relative; z-index: 10; }
+        #toolbar { background: #fff; border-bottom: 1px solid #d0d7de; padding: 8px; display: flex; gap: 5px; align-items: center; overflow-x: auto; position: relative; z-index: 10; flex-wrap: nowrap; }
         .btn { padding: 6px 10px; border: 1px solid #d0d7de; border-radius: 6px; cursor: pointer; background: #f6f8fa; font-size: 12px; font-weight: 600; white-space: nowrap; }
         .btn:active { opacity: 0.7; }
         .btn:disabled { opacity: 0.3; cursor: not-allowed; }
-        .btn-group { display: flex; gap: 2px; border-right: 1px solid #ddd; padding-right: 5px; margin-right: 5px; }
+        .btn-group { display: flex; gap: 2px; border-right: 1px solid #ddd; padding-right: 5px; margin-right: 5px; flex-shrink: 0; }
+        .group-label { font-size: 10px; color: #666; margin-bottom: 2px; display: block; text-align: center; }
         #sidebar { position: fixed; left: 0; top: 0; width: 260px; height: 100%; background: white; transform: translateX(-100%); transition: 0.3s; z-index: 1000; box-shadow: 5px 0 15px rgba(0,0,0,0.1); }
         #sidebar.open { transform: translateX(0); }
         #sidebar-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.3); z-index: 999; display: none; }
         #sidebar-overlay.visible { display: block; }
-        .file-item { padding: 12px 20px; border-bottom: 1px solid #eee; cursor: pointer; }
         #tab-bar { background: #f6f8fa; display: flex; border-bottom: 1px solid #d0d7de; overflow-x: auto; height: 35px; }
         .tab { padding: 8px 15px; border-right: 1px solid #d0d7de; cursor: pointer; font-size: 11px; background: #eaeef2; white-space: nowrap; }
         .tab.active { background: #fff; border-bottom: 2px solid var(--primary); font-weight: bold; }
@@ -52,25 +52,45 @@
 
 <div id="toolbar">
     <div class="btn-group">
-        <button class="btn" id="undoBtn" onclick="undo()">↩️</button>
-        <button class="btn" id="redoBtn" onclick="redo()">↪️</button>
+        <div><span class="group-label">歷史</span>
+            <button class="btn" id="undoBtn" onclick="undo()">↩️</button>
+            <button class="btn" id="redoBtn" onclick="redo()">↪️</button>
+        </div>
     </div>
     <div class="btn-group">
-        <button class="btn" onclick="modifyTable('row', 'before')">行↑</button>
-        <button class="btn" onclick="modifyTable('row', 'after')">行↓</button>
-        <button class="btn" style="color:var(--danger)" onclick="deleteSelected('row')">✂️行</button>
+        <div><span class="group-label">增刪行列</span>
+            <button class="btn" onclick="modifyTable('row', 'before')">行↑</button>
+            <button class="btn" onclick="modifyTable('row', 'after')">行↓</button>
+            <button class="btn" style="color:var(--danger)" onclick="deleteSelected('row')">✂️行</button>
+            <button class="btn" onclick="modifyTable('col', 'before')">←列</button>
+            <button class="btn" onclick="modifyTable('col', 'after')">列→</button>
+            <button class="btn" style="color:var(--danger)" onclick="deleteSelected('col')">✂️列</button>
+        </div>
     </div>
     <div class="btn-group">
-        <button class="btn" onclick="modifyTable('col', 'before')">←列</button>
-        <button class="btn" onclick="modifyTable('col', 'after')">列→</button>
-        <button class="btn" style="color:var(--danger)" onclick="deleteSelected('col')">✂️列</button>
+        <div><span class="group-label">選中項大小</span>
+            <button class="btn" onclick="resizeSelection('row', 10)">高+</button>
+            <button class="btn" onclick="resizeSelection('row', -10)">高-</button>
+            <button class="btn" onclick="resizeSelection('col', 20)">寬+</button>
+            <button class="btn" onclick="resizeSelection('col', -20)">寬-</button>
+        </div>
     </div>
     <div class="btn-group">
-        <button class="btn" onclick="exportToExcel()" style="background:#1d6f42; color:white; border:none;">📥 Excel</button>
+        <div><span class="group-label">全部大小</span>
+            <button class="btn" onclick="resizeAll('row', 5)">高+</button>
+            <button class="btn" onclick="resizeAll('row', -5)">高-</button>
+            <button class="btn" onclick="resizeAll('col', 10)">寬+</button>
+            <button class="btn" onclick="resizeAll('col', -10)">寬-</button>
+        </div>
     </div>
-    <button class="btn" onclick="changeZoom(-0.1)">➖</button>
-    <span class="zoom-info" id="zoom-text">100%</span>
-    <button class="btn" onclick="changeZoom(0.1)">➕</button>
+    <div class="btn-group">
+        <div><span class="group-label">工具</span>
+            <button class="btn" onclick="exportToExcel()" style="background:#1d6f42; color:white; border:none;">📥 Excel</button>
+            <button class="btn" onclick="changeZoom(-0.1)">➖</button>
+            <span class="zoom-info" id="zoom-text">100%</span>
+            <button class="btn" onclick="changeZoom(0.1)">➕</button>
+        </div>
+    </div>
 </div>
 
 <div id="tab-bar"><div class="tab-add" onclick="addNewSheet()" style="padding:8px; cursor:pointer; color:green;">＋</div></div>
@@ -92,41 +112,51 @@
         if (saved) { document.getElementById('token').value = saved; fetchFiles(); }
         initTable();
         setInterval(autoSave, 30000);
-        
         window.addEventListener('keydown', e => {
             if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undo(); }
             if ((e.ctrlKey || e.metaKey) && e.key === 'y') { e.preventDefault(); redo(); }
-            if (e.key === 'Delete' || e.key === 'Backspace') {
-                if (document.activeElement.tagName !== 'TD') clearSelectedCells();
-            }
+            if (e.key === 'Delete' || e.key === 'Backspace') { if (document.activeElement.tagName !== 'TD') clearSelectedCells(); }
         });
         document.addEventListener('mouseup', () => { isSelecting = false; });
     };
 
-    // --- Robust TSV Parser for Excel Paste ---
+    // --- 大小調整邏輯 ---
+    function resizeSelection(type, delta) {
+        const range = getSelectedRange() || (getFocus() ? {rMin: getFocus().r, rMax: getFocus().r, cMin: getFocus().c, cMax: getFocus().c} : null);
+        if (!range) return;
+        const sheet = workbook[activeSheet];
+        if (type === 'row') {
+            for (let i = range.rMin; i <= range.rMax; i++) sheet.rowH[i] = Math.max(20, (sheet.rowH[i] || 35) + delta);
+        } else {
+            for (let i = range.cMin; i <= range.cMax; i++) sheet.colW[i] = Math.max(40, (sheet.colW[i] || 100) + delta);
+        }
+        renderStyles();
+    }
+
+    function resizeAll(type, delta) {
+        const sheet = workbook[activeSheet];
+        if (type === 'row') {
+            sheet.rowH = sheet.rowH.map(h => Math.max(20, h + delta));
+            if (sheet.rowH.length === 0) sheet.rowH = new Array(sheet.data.length).fill(35 + delta);
+        } else {
+            sheet.colW = sheet.colW.map(w => Math.max(40, w + delta));
+            if (sheet.colW.length === 0) sheet.colW = new Array(sheet.data[0].length).fill(100 + delta);
+        }
+        renderStyles();
+    }
+
+    // --- Excel 貼上解析器 ---
     function parseTSV(text) {
-        const result = [];
-        let row = [];
-        let cell = '';
-        let inQuotes = false;
-
+        const result = []; let row = []; let cell = ''; let inQuotes = false;
         for (let i = 0; i < text.length; i++) {
-            const char = text[i];
-            const next = text[i+1];
-
-            if (inQuotes && char === '"' && next === '"') {
-                cell += '"'; i++; // Handle escaped double quotes
-            } else if (char === '"') {
-                inQuotes = !inQuotes;
-            } else if (!inQuotes && char === '\t') {
-                row.push(cell); cell = '';
-            } else if (!inQuotes && (char === '\r' || char === '\n')) {
-                row.push(cell); result.push(row);
-                row = []; cell = '';
-                if (char === '\r' && next === '\n') i++; // Skip CRLF
-            } else {
-                cell += char;
-            }
+            const char = text[i]; const next = text[i+1];
+            if (inQuotes && char === '"' && next === '"') { cell += '"'; i++; }
+            else if (char === '"') inQuotes = !inQuotes;
+            else if (!inQuotes && char === '\t') { row.push(cell); cell = ''; }
+            else if (!inQuotes && (char === '\r' || char === '\n')) {
+                row.push(cell); result.push(row); row = []; cell = '';
+                if (char === '\r' && next === '\n') i++;
+            } else cell += char;
         }
         if (cell || row.length) { row.push(cell); result.push(row); }
         return result;
@@ -134,80 +164,30 @@
 
     function handlePaste(e) {
         e.preventDefault();
-        const clipboardData = e.clipboardData || window.clipboardData;
-        const text = clipboardData.getData('text');
+        const text = (e.clipboardData || window.clipboardData).getData('text');
         if (!text) return;
-
-        const range = getSelectedRange();
-        const focus = getFocus();
+        const range = getSelectedRange(); const focus = getFocus();
         const startR = range ? range.rMin : (focus ? focus.r : 0);
         const startC = range ? range.cMin : (focus ? focus.c : 0);
-
         pushHistory();
-        let sheet = workbook[activeSheet];
         const rows = parseTSV(text);
-
+        let sheet = workbook[activeSheet];
         rows.forEach((rowData, rIdx) => {
-            const targetR = startR + rIdx;
-            while (targetR >= sheet.data.length) {
-                sheet.data.push(new Array(sheet.data[0].length).fill(""));
-            }
+            const tr = startR + rIdx;
+            if (!sheet.data[tr]) { sheet.data[tr] = new Array(sheet.data[0].length).fill(""); sheet.rowH[tr] = 35; }
             rowData.forEach((val, cIdx) => {
-                const targetC = startC + cIdx;
-                while (targetC >= sheet.data[0].length) {
-                    sheet.data.forEach(r => r.push(""));
-                    sheet.colW.push(100);
-                }
-                sheet.data[targetR][targetC] = val;
+                const tc = startC + cIdx;
+                if (tc >= sheet.data[0].length) { sheet.data.forEach(r => r.push("")); sheet.colW.push(100); }
+                sheet.data[tr][tc] = val;
             });
         });
-
         initTable();
-    }
-
-    function exportToExcel() {
-        const wb = XLSX.utils.book_new();
-        Object.keys(workbook).forEach(sheetName => {
-            const ws = XLSX.utils.aoa_to_sheet(workbook[sheetName].data);
-            XLSX.utils.book_append_sheet(wb, ws, sheetName);
-        });
-        const fileName = currentFile ? currentFile.replace('.json', '.xlsx') : 'export.xlsx';
-        XLSX.writeFile(wb, fileName);
-    }
-
-    function pushHistory() {
-        undoStack.push(JSON.stringify(workbook));
-        redoStack = [];
-        if (undoStack.length > 50) undoStack.shift();
-        updateHistoryButtons();
-    }
-
-    function undo() {
-        if (!undoStack.length) return;
-        redoStack.push(JSON.stringify(workbook));
-        workbook = JSON.parse(undoStack.pop());
-        initTable();
-        updateHistoryButtons();
-    }
-
-    function redo() {
-        if (!redoStack.length) return;
-        undoStack.push(JSON.stringify(workbook));
-        workbook = JSON.parse(redoStack.pop());
-        initTable();
-        updateHistoryButtons();
-    }
-
-    function updateHistoryButtons() {
-        document.getElementById('undoBtn').disabled = !undoStack.length;
-        document.getElementById('redoBtn').disabled = !redoStack.length;
     }
 
     function initTable() {
         const sheet = workbook[activeSheet];
         const table = document.getElementById('main-table');
         table.innerHTML = "";
-        
         const thead = document.createElement('tr');
         thead.appendChild(document.createElement('th'));
         for(let i=0; i<sheet.data[0].length; i++) {
@@ -215,21 +195,17 @@
             thead.appendChild(th);
         }
         table.appendChild(thead);
-
         sheet.data.forEach((rowData, r) => {
             const tr = document.createElement('tr');
             const th = document.createElement('th'); th.innerText = r + 1;
             tr.appendChild(th);
             rowData.forEach((cellData, c) => {
                 const td = document.createElement('td');
-                td.contentEditable = "true";
-                td.innerText = cellData;
+                td.contentEditable = "true"; td.innerText = cellData;
                 td.dataset.r = r; td.dataset.c = c;
                 td.onmousedown = (e) => { isSelecting = true; startCell = {r, c}; endCell = {r, c}; highlightRange(); };
                 td.onmouseover = () => { if(isSelecting) { endCell = {r, c}; highlightRange(); } };
-                td.onblur = () => { 
-                    if(sheet.data[r][c] !== td.innerText) { pushHistory(); sheet.data[r][c] = td.innerText; }
-                };
+                td.onblur = () => { if(sheet.data[r][c] !== td.innerText) { pushHistory(); sheet.data[r][c] = td.innerText; } };
                 tr.appendChild(td);
             });
             table.appendChild(tr);
@@ -238,6 +214,27 @@
         renderTabs();
     }
 
+    function renderStyles() {
+        const sheet = workbook[activeSheet];
+        const rows = document.getElementById('main-table').rows;
+        if(!rows.length) return;
+        // Apply Column Widths
+        for (let j = 0; j < sheet.data[0].length; j++) {
+            const w = (sheet.colW[j] || 100) + 'px';
+            for (let i = 0; i < rows.length; i++) {
+                const cell = rows[i].cells[j+1];
+                if (cell) { cell.style.width = w; cell.style.minWidth = w; cell.style.maxWidth = w; }
+            }
+        }
+        // Apply Row Heights
+        for (let i = 0; i < sheet.data.length; i++) {
+            const h = (sheet.rowH[i] || 35) + 'px';
+            const row = rows[i+1];
+            if (row) Array.from(row.cells).forEach(c => c.style.height = h);
+        }
+    }
+
+    // --- 輔助功能 ---
     function highlightRange() {
         const rMin = Math.min(startCell.r, endCell.r), rMax = Math.max(startCell.r, endCell.r);
         const cMin = Math.min(startCell.c, endCell.c), cMax = Math.max(startCell.c, endCell.c);
@@ -261,96 +258,63 @@
 
     function getFocus() {
         const sel = window.getSelection();
-        if (!sel.rangeCount) return null;
+        if (!sel || !sel.rangeCount) return null;
         let node = sel.anchorNode;
         while (node && node.tagName !== 'TD') node = node.parentElement;
         if (!node) return null;
         return { r: parseInt(node.dataset.r), c: parseInt(node.dataset.c) };
     }
 
-    function clearSelectedCells() {
-        const selected = document.querySelectorAll('td.selected');
-        if (!selected.length) return;
-        pushHistory();
-        selected.forEach(td => {
-            workbook[activeSheet].data[td.dataset.r][td.dataset.c] = "";
-            td.innerText = "";
-        });
+    function undo() { if (undoStack.length) { redoStack.push(JSON.stringify(workbook)); workbook = JSON.parse(undoStack.pop()); initTable(); updateHistoryButtons(); } }
+    function redo() { if (redoStack.length) { undoStack.push(JSON.stringify(workbook)); workbook = JSON.parse(redoStack.pop()); initTable(); updateHistoryButtons(); } }
+    function pushHistory() { undoStack.push(JSON.stringify(workbook)); redoStack = []; if (undoStack.length > 50) undoStack.shift(); updateHistoryButtons(); }
+    function updateHistoryButtons() { document.getElementById('undoBtn').disabled = !undoStack.length; document.getElementById('redoBtn').disabled = !redoStack.length; }
+
+    function exportToExcel() {
+        const wb = XLSX.utils.book_new();
+        Object.keys(workbook).forEach(name => XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(workbook[name].data), name));
+        XLSX.writeFile(wb, currentFile ? currentFile.replace('.json', '.xlsx') : 'export.xlsx');
     }
 
     function modifyTable(type, action) {
-        pushHistory();
-        const focus = getFocus() || {r:0, c:0};
-        let sheet = workbook[activeSheet];
+        pushHistory(); const f = getFocus() || {r:0, c:0}; let sheet = workbook[activeSheet];
         if (type === 'row') {
-            const pos = (action === 'before') ? focus.r : focus.r + 1;
+            const pos = action === 'before' ? f.r : f.r + 1;
             sheet.data.splice(pos, 0, new Array(sheet.data[0].length).fill(""));
+            sheet.rowH.splice(pos, 0, 35);
         } else {
-            const pos = (action === 'before') ? focus.c : focus.c + 1;
-            sheet.data.forEach(row => row.splice(pos, 0, ""));
+            const pos = action === 'before' ? f.c : f.c + 1;
+            sheet.data.forEach(r => r.splice(pos, 0, ""));
             sheet.colW.splice(pos, 0, 100);
         }
         initTable();
     }
 
     function deleteSelected(type) {
-        const range = getSelectedRange();
-        if (!range) return;
-        pushHistory();
-        let sheet = workbook[activeSheet];
-        if (type === 'row') {
-            sheet.data.splice(range.rMin, range.rMax - range.rMin + 1);
-        } else {
-            sheet.data.forEach(row => row.splice(range.cMin, range.cMax - range.cMin + 1));
-            sheet.colW.splice(range.cMin, range.cMax - range.cMin + 1);
-        }
+        const range = getSelectedRange(); if (!range) return;
+        pushHistory(); let sheet = workbook[activeSheet];
+        if (type === 'row') { sheet.data.splice(range.rMin, range.rMax - range.rMin + 1); sheet.rowH.splice(range.rMin, range.rMax - range.rMin + 1); }
+        else { sheet.data.forEach(r => r.splice(range.cMin, range.cMax - range.cMin + 1)); sheet.colW.splice(range.cMin, range.cMax - range.cMin + 1); }
         initTable();
     }
 
-    function renderStyles() {
-        const sheet = workbook[activeSheet];
-        const rows = document.getElementById('main-table').rows;
-        if(!rows.length) return;
-        for (let j = 0; j < sheet.colW.length; j++) {
-            const w = sheet.colW[j] + 'px';
-            for (let i = 0; i < rows.length; i++) {
-                const cell = rows[i].cells[j+1];
-                if (cell) { cell.style.width = w; cell.style.minWidth = w; }
-            }
-        }
-    }
-
-    function changeZoom(delta) {
-        currentZoom = Math.max(0.1, Math.min(3.0, Math.round((currentZoom + delta) * 10) / 10));
-        document.getElementById('main-table').style.transform = `scale(${currentZoom})`;
-        document.getElementById('zoom-text').innerText = Math.round(currentZoom * 100) + "%";
-    }
-
-    function toggleSidebar() {
-        const open = document.getElementById('sidebar').classList.toggle('open');
-        document.getElementById('sidebar-overlay').classList.toggle('visible', open);
-    }
-
+    function changeZoom(delta) { currentZoom = Math.max(0.1, Math.min(3, currentZoom + delta)); document.getElementById('main-table').style.transform = `scale(${currentZoom})`; document.getElementById('zoom-text').innerText = Math.round(currentZoom*100)+"%"; }
+    function toggleSidebar() { const open = document.getElementById('sidebar').classList.toggle('open'); document.getElementById('sidebar-overlay').classList.toggle('visible', open); }
     function renderTabs() {
-        const bar = document.getElementById('tab-bar');
-        bar.querySelectorAll('.tab').forEach(t => t.remove());
+        const bar = document.getElementById('tab-bar'); bar.querySelectorAll('.tab').forEach(t => t.remove());
         Object.keys(workbook).forEach(name => {
-            const div = document.createElement('div');
-            div.className = `tab ${name === activeSheet ? 'active' : ''}`;
-            div.innerText = name;
-            div.onclick = () => { activeSheet = name; initTable(); };
+            const div = document.createElement('div'); div.className = `tab ${name === activeSheet ? 'active' : ''}`;
+            div.innerText = name; div.onclick = () => { activeSheet = name; initTable(); };
             bar.insertBefore(div, bar.firstChild);
         });
     }
 
     async function fetchFiles() {
-        const token = document.getElementById('token').value;
-        if(!token) return;
+        const token = document.getElementById('token').value; if(!token) return;
         localStorage.setItem('gh_token', token);
         const res = await fetch(`https://api.github.com/repos/${REPO}/contents/`, { headers: { 'Authorization': `token ${token}` } });
         const files = await res.json();
-        const list = document.getElementById('file-items');
-        list.innerHTML = "";
+        const list = document.getElementById('file-items'); list.innerHTML = "";
         files.filter(f => f.name.endsWith('.json')).forEach(f => {
             const d = document.createElement('div'); d.className = "file-item"; d.innerText = f.name;
             d.onclick = () => loadFile(f.name); list.appendChild(d);
@@ -360,46 +324,26 @@
     async function loadFile(name) {
         toggleSidebar(); document.getElementById('status').innerText = "Loading...";
         const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${name}`, { headers: { 'Authorization': `token ${document.getElementById('token').value}` } });
-        const json = await res.json();
-        currentFile = name; currentSha = json.sha;
+        const json = await res.json(); currentFile = name; currentSha = json.sha;
         const content = JSON.parse(pako.ungzip(new Uint8Array(atob(json.content).split('').map(c => c.charCodeAt(0))), {to:'string'}));
         workbook = Array.isArray(content) ? { "Sheet1": { data: content, rowH: [], colW: [] } } : content;
-        activeSheet = Object.keys(workbook)[0];
-        lastSavedData = JSON.stringify(workbook);
+        activeSheet = Object.keys(workbook)[0]; lastSavedData = JSON.stringify(workbook);
         initTable(); document.getElementById('status').innerText = name;
     }
 
     async function saveToCloud() {
         const dataStr = JSON.stringify(workbook);
-        const compressed = pako.gzip(dataStr);
         const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentFile}`, {
-            method: 'PUT',
-            headers: { 'Authorization': `token ${document.getElementById('token').value}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: "AutoSave", content: btoa(String.fromCharCode.apply(null, compressed)), sha: currentSha })
+            method: 'PUT', headers: { 'Authorization': `token ${document.getElementById('token').value}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: "AutoSave", content: btoa(String.fromCharCode.apply(null, pako.gzip(dataStr))), sha: currentSha })
         });
-        const json = await res.json();
-        if(json.content) { currentSha = json.content.sha; lastSavedData = dataStr; }
+        const json = await res.json(); if(json.content) { currentSha = json.content.sha; lastSavedData = dataStr; }
     }
 
-    async function autoSave() {
-        if (currentFile && JSON.stringify(workbook) !== lastSavedData) {
-            document.getElementById('status').innerText = "Saving...";
-            await saveToCloud();
-            document.getElementById('status').innerText = currentFile;
-        }
-    }
-
+    async function autoSave() { if (currentFile && JSON.stringify(workbook) !== lastSavedData) { document.getElementById('status').innerText = "Saving..."; await saveToCloud(); document.getElementById('status').innerText = currentFile; } }
     function manualSave() { if(currentFile) saveToCloud(); }
-    function addNewSheet() {
-        const name = prompt("分頁名稱:");
-        if (name && !workbook[name]) { pushHistory(); workbook[name] = { data: [["",""]], rowH: [35], colW: [100,100] }; activeSheet = name; initTable(); }
-    }
-    function createNewFile() {
-        let name = prompt("新檔名:"); if (!name) return;
-        if (!name.endsWith('.json')) name += '.json';
-        currentFile = name; workbook = { "Sheet1": { data: [["",""]], rowH:[35], colW:[100,100] } };
-        saveToCloud().then(fetchFiles);
-    }
+    function addNewSheet() { const name = prompt("分頁名稱:"); if (name && !workbook[name]) { pushHistory(); workbook[name] = { data: [["",""]], rowH: [35], colW: [100,100] }; activeSheet = name; initTable(); } }
+    function createNewFile() { let name = prompt("新檔名:"); if (!name) return; if (!name.endsWith('.json')) name += '.json'; currentFile = name; workbook = { "Sheet1": { data: [["",""]], rowH:[35], colW:[100,100] } }; saveToCloud().then(fetchFiles); }
 </script>
 </body>
 </html>
