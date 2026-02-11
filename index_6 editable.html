@@ -371,4 +371,55 @@
             if (node.classList && node.classList.contains('cell-editor')) break;
             node = node.parentElement;
         }
-        if (node && node.classList.contains('
+        if (node && node.classList.contains('cell-editor')) node = node.parentElement;
+        return node ? { r: parseInt(node.dataset.r), c: parseInt(node.dataset.c) } : null;
+    }
+    function highlightRange() {
+        const rMin = Math.min(startCell.r, endCell.r), rMax = Math.max(startCell.r, endCell.r);
+        const cMin = Math.min(startCell.c, endCell.c), cMax = Math.max(startCell.c, endCell.c);
+        document.querySelectorAll('td').forEach(td => {
+            const r = parseInt(td.dataset.r), c = parseInt(td.dataset.c);
+            td.classList.toggle('selected', r >= rMin && r <= rMax && c >= cMin && c <= cMax);
+        });
+    }
+    function clearSelectedCells() {
+        const selected = document.querySelectorAll('td.selected');
+        if (!selected.length) return;
+        pushHistory();
+        selected.forEach(td => { 
+            workbook[activeSheet].data[td.dataset.r][td.dataset.c] = ""; 
+            const editor = td.querySelector('.cell-editor');
+            if(editor) editor.innerText = ""; 
+        });
+    }
+    function openImport() { document.getElementById('import-modal').style.display = 'block'; document.getElementById('import-area').focus(); }
+    function closeImport() { document.getElementById('import-modal').style.display = 'none'; }
+    function processExcelImport() {
+        const text = document.getElementById('import-area').value; if (!text) return closeImport();
+        const f = getFocus() || {r:0, c:0}; pushHistory();
+        const rows = text.split(/\r?\n/).map(row => row.split('\t'));
+        let sheet = workbook[activeSheet];
+        rows.forEach((rowData, rIdx) => {
+            const tr = f.r + rIdx;
+            if (tr >= sheet.data.length) { sheet.data.push(new Array(sheet.data[0].length).fill("")); sheet.rowH.push(35); }
+            rowData.forEach((val, cIdx) => {
+                const tc = f.c + cIdx;
+                if (tc >= sheet.data[0].length) { sheet.data.forEach(r => r.push("")); sheet.colW.push(100); }
+                sheet.data[tr][tc] = val;
+            });
+        });
+        initTable(); closeImport();
+    }
+    function exportToExcel() { const wb = XLSX.utils.book_new(); Object.keys(workbook).forEach(name => XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(workbook[name].data), name)); XLSX.writeFile(wb, currentFile ? currentFile.replace('.json', '.xlsx') : 'export.xlsx'); }
+    function toggleSidebar() { const open = document.getElementById('sidebar').classList.toggle('open'); document.getElementById('sidebar-overlay').style.display = open ? 'block' : 'none'; }
+    function renderTabs() { const bar = document.getElementById('tab-bar'); bar.querySelectorAll('.tab').forEach(t => t.remove()); Object.keys(workbook).forEach(name => { const div = document.createElement('div'); div.className = `tab ${name === activeSheet ? 'active' : ''}`; div.innerText = name; div.onclick = () => { activeSheet = name; initTable(); }; bar.insertBefore(div, bar.firstChild); }); }
+    async function fetchFiles() { const token = document.getElementById('token').value; if(!token) return; localStorage.setItem('gh_token', token); const res = await fetch(`https://api.github.com/repos/${REPO}/contents/`, { headers: { 'Authorization': `token ${token}` } }); const files = await res.json(); const list = document.getElementById('file-items'); list.innerHTML = ""; files.filter(f => f.name.endsWith('.json')).forEach(f => { const d = document.createElement('div'); d.className = "file-item"; d.innerText = f.name; d.onclick = () => loadFile(f.name); list.appendChild(d); }); }
+    async function loadFile(name) { toggleSidebar(); document.getElementById('status').innerText = "Loading..."; const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${name}`, { headers: { 'Authorization': `token ${document.getElementById('token').value}` } }); const json = await res.json(); currentFile = name; currentSha = json.sha; const content = JSON.parse(pako.ungzip(new Uint8Array(atob(json.content).split('').map(c => c.charCodeAt(0))), {to:'string'})); workbook = content; activeSheet = Object.keys(workbook)[0]; lastSavedData = JSON.stringify(workbook); initTable(); document.getElementById('status').innerText = name; }
+    async function saveToCloud() { const dataStr = JSON.stringify(workbook); const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentFile}`, { method: 'PUT', headers: { 'Authorization': `token ${document.getElementById('token').value}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ message: "AutoSave", content: btoa(String.fromCharCode.apply(null, pako.gzip(dataStr))), sha: currentSha }) }); const json = await res.json(); if(json.content) { currentSha = json.content.sha; lastSavedData = dataStr; } }
+    async function autoSave() { if (currentFile && JSON.stringify(workbook) !== lastSavedData) { await saveToCloud(); document.getElementById('status').innerText = currentFile; } }
+    function manualSave() { if(currentFile) saveToCloud(); }
+    function addNewSheet() { const name = prompt("分頁名稱:"); if (name && !workbook[name]) { pushHistory(); workbook[name] = { data: [["",""]], rowH: [35], colW: [100,100], format: "wrap", cellStyles: {} }; activeSheet = name; initTable(); } }
+    function createNewFile() { let name = prompt("新檔名:"); if (!name) return; if (!name.endsWith('.json')) name += '.json'; currentFile = name; workbook = { "Sheet1": { data: [["",""]], rowH:[35], colW:[100,100], format: "wrap", cellStyles: {} } }; saveToCloud().then(fetchFiles); }
+</script>
+</body>
+</html>
