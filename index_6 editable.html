@@ -3,8 +3,9 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Simple Drive V13 - Excel Fix</title>
+    <title>Simple Drive V14</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
         :root { --primary: #0969da; --success: #2ea44f; --danger: #cf222e; --gh-dark: #24292f; --select-bg: #e7f3ff; --select-border: #0969da; }
         body { font-family: -apple-system, sans-serif; margin: 0; background: #f6f8fa; overflow: hidden; user-select: none; }
@@ -64,6 +65,9 @@
         <button class="btn" onclick="modifyTable('col', 'after')">列→</button>
         <button class="btn" style="color:var(--danger)" onclick="deleteSelected('col')">✂️列</button>
     </div>
+    <div class="btn-group">
+        <button class="btn" onclick="exportToExcel()" style="background:#1d6f42; color:white; border:none;">📥 Excel</button>
+    </div>
     <button class="btn" onclick="changeZoom(-0.1)">➖</button>
     <span class="zoom-info" id="zoom-text">100%</span>
     <button class="btn" onclick="changeZoom(0.1)">➕</button>
@@ -99,6 +103,21 @@
         document.addEventListener('mouseup', () => { isSelecting = false; });
     };
 
+    // --- Excel Export Function ---
+    function exportToExcel() {
+        if (!currentFile && !confirm("尚未開啟任何雲端檔案，確定要匯出目前內容嗎？")) return;
+        
+        const wb = XLSX.utils.book_new();
+        
+        Object.keys(workbook).forEach(sheetName => {
+            const ws = XLSX.utils.aoa_to_sheet(workbook[sheetName].data);
+            XLSX.utils.book_append_sheet(wb, ws, sheetName);
+        });
+        
+        const fileName = currentFile ? currentFile.replace('.json', '.xlsx') : 'export.xlsx';
+        XLSX.writeFile(wb, fileName);
+    }
+
     function pushHistory() {
         undoStack.push(JSON.stringify(workbook));
         redoStack = [];
@@ -127,14 +146,12 @@
         document.getElementById('redoBtn').disabled = !redoStack.length;
     }
 
-    // --- Excel Fix: The Paste Handler ---
     function handlePaste(e) {
         e.preventDefault();
         const clipboardData = e.clipboardData || window.clipboardData;
         const text = clipboardData.getData('text');
         if (!text) return;
 
-        // Determine paste start point: Selected range top-left OR currently focused cell
         const range = getSelectedRange();
         const focus = getFocus();
         const startR = range ? range.rMin : (focus ? focus.r : 0);
@@ -143,8 +160,6 @@
         pushHistory();
         let sheet = workbook[activeSheet];
 
-        // Sanitize Excel logic: 
-        // 1. Split rows. 2. Split columns by Tab. 3. Strip surrounding quotes added by Excel for multi-line cells.
         const rows = text.split(/\r\n|\n|\r/).filter((row, i, arr) => i < arr.length - 1 || row.trim() !== "").map(row => {
             return row.split('\t').map(cell => {
                 let c = cell.trim();
@@ -155,14 +170,12 @@
 
         rows.forEach((rowData, rIdx) => {
             const targetR = startR + rIdx;
-            // Expand Rows
             while (targetR >= sheet.data.length) {
                 sheet.data.push(new Array(sheet.data[0].length).fill(""));
                 sheet.rowH.push(35);
             }
             rowData.forEach((val, cIdx) => {
                 const targetC = startC + cIdx;
-                // Expand Columns
                 while (targetC >= sheet.data[0].length) {
                     sheet.data.forEach(r => r.push(""));
                     sheet.colW.push(100);
@@ -251,14 +264,18 @@
 
     function modifyTable(type, action) {
         pushHistory();
+        const range = getSelectedRange();
         const focus = getFocus() || {r:0, c:0};
+        const startPoint = range ? range.rMin : focus.r;
+        const startPointC = range ? range.cMin : focus.c;
+        
         let sheet = workbook[activeSheet];
         if (type === 'row') {
-            const pos = (action === 'before') ? focus.r : focus.r + 1;
+            const pos = (action === 'before') ? startPoint : startPoint + 1;
             sheet.data.splice(pos, 0, new Array(sheet.data[0].length).fill(""));
             sheet.rowH.splice(pos, 0, 35);
         } else {
-            const pos = (action === 'before') ? focus.c : focus.c + 1;
+            const pos = (action === 'before') ? startPointC : startPointC + 1;
             sheet.data.forEach(row => row.splice(pos, 0, ""));
             sheet.colW.splice(pos, 0, 100);
         }
