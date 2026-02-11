@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Simple Drive V14</title>
+    <title>Simple Drive V15</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
@@ -103,17 +103,74 @@
         document.addEventListener('mouseup', () => { isSelecting = false; });
     };
 
-    // --- Excel Export Function ---
+    // --- Robust TSV Parser for Excel Paste ---
+    function parseTSV(text) {
+        const result = [];
+        let row = [];
+        let cell = '';
+        let inQuotes = false;
+
+        for (let i = 0; i < text.length; i++) {
+            const char = text[i];
+            const next = text[i+1];
+
+            if (inQuotes && char === '"' && next === '"') {
+                cell += '"'; i++; // Handle escaped double quotes
+            } else if (char === '"') {
+                inQuotes = !inQuotes;
+            } else if (!inQuotes && char === '\t') {
+                row.push(cell); cell = '';
+            } else if (!inQuotes && (char === '\r' || char === '\n')) {
+                row.push(cell); result.push(row);
+                row = []; cell = '';
+                if (char === '\r' && next === '\n') i++; // Skip CRLF
+            } else {
+                cell += char;
+            }
+        }
+        if (cell || row.length) { row.push(cell); result.push(row); }
+        return result;
+    }
+
+    function handlePaste(e) {
+        e.preventDefault();
+        const clipboardData = e.clipboardData || window.clipboardData;
+        const text = clipboardData.getData('text');
+        if (!text) return;
+
+        const range = getSelectedRange();
+        const focus = getFocus();
+        const startR = range ? range.rMin : (focus ? focus.r : 0);
+        const startC = range ? range.cMin : (focus ? focus.c : 0);
+
+        pushHistory();
+        let sheet = workbook[activeSheet];
+        const rows = parseTSV(text);
+
+        rows.forEach((rowData, rIdx) => {
+            const targetR = startR + rIdx;
+            while (targetR >= sheet.data.length) {
+                sheet.data.push(new Array(sheet.data[0].length).fill(""));
+            }
+            rowData.forEach((val, cIdx) => {
+                const targetC = startC + cIdx;
+                while (targetC >= sheet.data[0].length) {
+                    sheet.data.forEach(r => r.push(""));
+                    sheet.colW.push(100);
+                }
+                sheet.data[targetR][targetC] = val;
+            });
+        });
+
+        initTable();
+    }
+
     function exportToExcel() {
-        if (!currentFile && !confirm("尚未開啟任何雲端檔案，確定要匯出目前內容嗎？")) return;
-        
         const wb = XLSX.utils.book_new();
-        
         Object.keys(workbook).forEach(sheetName => {
             const ws = XLSX.utils.aoa_to_sheet(workbook[sheetName].data);
             XLSX.utils.book_append_sheet(wb, ws, sheetName);
         });
-        
         const fileName = currentFile ? currentFile.replace('.json', '.xlsx') : 'export.xlsx';
         XLSX.writeFile(wb, fileName);
     }
@@ -144,47 +201,6 @@
     function updateHistoryButtons() {
         document.getElementById('undoBtn').disabled = !undoStack.length;
         document.getElementById('redoBtn').disabled = !redoStack.length;
-    }
-
-    function handlePaste(e) {
-        e.preventDefault();
-        const clipboardData = e.clipboardData || window.clipboardData;
-        const text = clipboardData.getData('text');
-        if (!text) return;
-
-        const range = getSelectedRange();
-        const focus = getFocus();
-        const startR = range ? range.rMin : (focus ? focus.r : 0);
-        const startC = range ? range.cMin : (focus ? focus.c : 0);
-
-        pushHistory();
-        let sheet = workbook[activeSheet];
-
-        const rows = text.split(/\r\n|\n|\r/).filter((row, i, arr) => i < arr.length - 1 || row.trim() !== "").map(row => {
-            return row.split('\t').map(cell => {
-                let c = cell.trim();
-                if (c.startsWith('"') && c.endsWith('"')) c = c.slice(1, -1).replace(/""/g, '"');
-                return c;
-            });
-        });
-
-        rows.forEach((rowData, rIdx) => {
-            const targetR = startR + rIdx;
-            while (targetR >= sheet.data.length) {
-                sheet.data.push(new Array(sheet.data[0].length).fill(""));
-                sheet.rowH.push(35);
-            }
-            rowData.forEach((val, cIdx) => {
-                const targetC = startC + cIdx;
-                while (targetC >= sheet.data[0].length) {
-                    sheet.data.forEach(r => r.push(""));
-                    sheet.colW.push(100);
-                }
-                sheet.data[targetR][targetC] = val;
-            });
-        });
-
-        initTable();
     }
 
     function initTable() {
@@ -264,18 +280,13 @@
 
     function modifyTable(type, action) {
         pushHistory();
-        const range = getSelectedRange();
         const focus = getFocus() || {r:0, c:0};
-        const startPoint = range ? range.rMin : focus.r;
-        const startPointC = range ? range.cMin : focus.c;
-        
         let sheet = workbook[activeSheet];
         if (type === 'row') {
-            const pos = (action === 'before') ? startPoint : startPoint + 1;
+            const pos = (action === 'before') ? focus.r : focus.r + 1;
             sheet.data.splice(pos, 0, new Array(sheet.data[0].length).fill(""));
-            sheet.rowH.splice(pos, 0, 35);
         } else {
-            const pos = (action === 'before') ? startPointC : startPointC + 1;
+            const pos = (action === 'before') ? focus.c : focus.c + 1;
             sheet.data.forEach(row => row.splice(pos, 0, ""));
             sheet.colW.splice(pos, 0, 100);
         }
@@ -289,7 +300,6 @@
         let sheet = workbook[activeSheet];
         if (type === 'row') {
             sheet.data.splice(range.rMin, range.rMax - range.rMin + 1);
-            sheet.rowH.splice(range.rMin, range.rMax - range.rMin + 1);
         } else {
             sheet.data.forEach(row => row.splice(range.cMin, range.cMax - range.cMin + 1));
             sheet.colW.splice(range.cMin, range.cMax - range.cMin + 1);
@@ -356,7 +366,6 @@
         workbook = Array.isArray(content) ? { "Sheet1": { data: content, rowH: [], colW: [] } } : content;
         activeSheet = Object.keys(workbook)[0];
         lastSavedData = JSON.stringify(workbook);
-        undoStack = []; redoStack = []; updateHistoryButtons();
         initTable(); document.getElementById('status').innerText = name;
     }
 
