@@ -3,11 +3,11 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Simple Drive V11 - History Support</title>
+    <title>Simple Drive V12 - Multi-Select</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
     <style>
-        :root { --primary: #0969da; --success: #2ea44f; --danger: #cf222e; --gh-dark: #24292f; }
-        body { font-family: -apple-system, sans-serif; margin: 0; background: #f6f8fa; overflow: hidden; }
+        :root { --primary: #0969da; --success: #2ea44f; --danger: #cf222e; --gh-dark: #24292f; --select-bg: #e7f3ff; --select-border: #0969da; }
+        body { font-family: -apple-system, sans-serif; margin: 0; background: #f6f8fa; overflow: hidden; user-select: none; }
         #header { background: var(--gh-dark); color: white; padding: 8px 12px; display: flex; gap: 10px; align-items: center; height: 45px; box-sizing: border-box; z-index: 300; position: relative; }
         #header input { background: #333; border: 1px solid #444; color: white; padding: 5px; border-radius: 4px; width: 80px; flex-grow: 1; }
         #toolbar { background: #fff; border-bottom: 1px solid #d0d7de; padding: 8px; display: flex; gap: 5px; align-items: center; overflow-x: auto; position: relative; z-index: 10; }
@@ -23,11 +23,13 @@
         #tab-bar { background: #f6f8fa; display: flex; border-bottom: 1px solid #d0d7de; overflow-x: auto; height: 35px; }
         .tab { padding: 8px 15px; border-right: 1px solid #d0d7de; cursor: pointer; font-size: 11px; background: #eaeef2; white-space: nowrap; }
         .tab.active { background: #fff; border-bottom: 2px solid var(--primary); font-weight: bold; }
-        #editor-container { padding: 20px; overflow: auto; height: calc(100vh - 125px); }
+        #editor-container { padding: 20px; overflow: auto; height: calc(100vh - 125px); position: relative; }
         table { border-collapse: collapse; background: white; transform-origin: top left; transition: transform 0.1s; table-layout: fixed; }
         td, th { border: 1px solid #d0d7de; padding: 4px 8px; font-size: 14px; outline: none; box-sizing: border-box; overflow: hidden; word-break: break-all; white-space: pre-wrap; line-height: 1.2; }
         th { background: #f6f8fa; font-size: 11px; color: #57606a; text-align: center; }
-        td:focus { background: #f0f7ff; box-shadow: inset 0 0 0 2px var(--primary); z-index: 5; }
+        /* Selection Styles */
+        td.selected { background: var(--select-bg) !important; outline: 1px solid var(--select-border); z-index: 2; }
+        td:focus { background: white; outline: 2px solid var(--primary); z-index: 5; }
         .zoom-info { font-family: monospace; font-size: 13px; min-width: 45px; text-align: center; }
     </style>
 </head>
@@ -50,8 +52,8 @@
 
 <div id="toolbar">
     <div class="btn-group">
-        <button class="btn" id="undoBtn" onclick="undo()" title="Undo">↩️</button>
-        <button class="btn" id="redoBtn" onclick="redo()" title="Redo">↪️</button>
+        <button class="btn" id="undoBtn" onclick="undo()">↩️</button>
+        <button class="btn" id="redoBtn" onclick="redo()">↪️</button>
     </div>
     <div class="btn-group">
         <button class="btn" onclick="modifyTable('row', 'before')">行↑</button>
@@ -62,12 +64,6 @@
         <button class="btn" onclick="modifyTable('col', 'before')">←列</button>
         <button class="btn" onclick="modifyTable('col', 'after')">列→</button>
         <button class="btn" style="color:var(--danger)" onclick="deleteSelected('col')">✂️列</button>
-    </div>
-    <div class="btn-group">
-        <button class="btn" onclick="resizeSelected('col', 14)">列寬+</button>
-        <button class="btn" onclick="resizeSelected('col', -14)">列寬-</button>
-        <button class="btn" onclick="resizeSelected('row', 14)">行高+</button>
-        <button class="btn" onclick="resizeSelected('row', -14)">行高-</button>
     </div>
     <button class="btn" onclick="changeZoom(-0.1)">➖</button>
     <span class="zoom-info" id="zoom-text">100%</span>
@@ -84,27 +80,37 @@
     const REPO = "patrickwoolf/my-online-drive";
     let workbook = { "Sheet1": { data: [["","",""]], rowH: [35], colW: [100,100,100] } };
     let activeSheet = "Sheet1";
-    let currentFile = null;
-    let currentSha = null;
-    let currentZoom = 1.0;
-    let lastSavedData = "";
+    let currentFile = null, currentSha = null, currentZoom = 1.0, lastSavedData = "";
+    let undoStack = [], redoStack = [];
 
-    // History System
-    let undoStack = [];
-    let redoStack = [];
+    // Selection State
+    let isSelecting = false, startCell = null, endCell = null;
 
     window.onload = () => {
         const saved = localStorage.getItem('gh_token');
         if (saved) { document.getElementById('token').value = saved; fetchFiles(); }
         initTable();
         setInterval(autoSave, 30000);
-        updateHistoryButtons();
+        
+        // Global Keyboard Listeners
+        window.addEventListener('keydown', e => {
+            if (e.ctrlKey || e.metaKey) {
+                if (e.key === 'z') { e.preventDefault(); undo(); }
+                if (e.key === 'y') { e.preventDefault(); redo(); }
+            }
+            if (e.key === 'Delete' || e.key === 'Backspace') {
+                if (document.activeElement.tagName !== 'TD') clearSelectedCells();
+            }
+        });
+
+        // Mouse Selection Listeners
+        document.addEventListener('mouseup', () => { isSelecting = false; });
     };
 
     function pushHistory() {
         undoStack.push(JSON.stringify(workbook));
-        redoStack = []; // Clear redo on new action
-        if (undoStack.length > 50) undoStack.shift(); 
+        redoStack = [];
+        if (undoStack.length > 50) undoStack.shift();
         updateHistoryButtons();
     }
 
@@ -112,7 +118,6 @@
         if (undoStack.length === 0) return;
         redoStack.push(JSON.stringify(workbook));
         workbook = JSON.parse(undoStack.pop());
-        if (!workbook[activeSheet]) activeSheet = Object.keys(workbook)[0];
         initTable();
         updateHistoryButtons();
     }
@@ -121,7 +126,6 @@
         if (redoStack.length === 0) return;
         undoStack.push(JSON.stringify(workbook));
         workbook = JSON.parse(redoStack.pop());
-        if (!workbook[activeSheet]) activeSheet = Object.keys(workbook)[0];
         initTable();
         updateHistoryButtons();
     }
@@ -129,55 +133,6 @@
     function updateHistoryButtons() {
         document.getElementById('undoBtn').disabled = undoStack.length === 0;
         document.getElementById('redoBtn').disabled = redoStack.length === 0;
-    }
-
-    function deleteSelected(type) {
-        const focus = getFocus();
-        if (!focus) return alert("請先選中儲存格");
-        pushHistory();
-        let sheet = workbook[activeSheet];
-        if (type === 'row') {
-            if (sheet.data.length <= 1) return;
-            sheet.data.splice(focus.r, 1);
-            sheet.rowH.splice(focus.r, 1);
-        } else {
-            if (sheet.data[0].length <= 1) return;
-            sheet.data.forEach(row => row.splice(focus.c, 1));
-            sheet.colW.splice(focus.c, 1);
-        }
-        initTable();
-    }
-
-    function resizeSelected(type, delta) {
-        const focus = getFocus();
-        if (!focus) return;
-        const sheet = workbook[activeSheet];
-        if (type === 'row') {
-            let curH = sheet.rowH[focus.r] || 35;
-            sheet.rowH[focus.r] = Math.max(25, curH + delta);
-        } else {
-            let curW = sheet.colW[focus.c] || 100;
-            sheet.colW[focus.c] = Math.max(40, curW + delta);
-        }
-        renderStyles();
-    }
-
-    function renderStyles() {
-        const sheet = workbook[activeSheet];
-        const rows = document.getElementById('main-table').rows;
-        if(!rows.length) return;
-        for (let j = 0; j < sheet.colW.length; j++) {
-            const w = sheet.colW[j] + 'px';
-            for (let i = 0; i < rows.length; i++) {
-                const targetCell = rows[i].cells[j+1];
-                if (targetCell) { targetCell.style.width = w; targetCell.style.minWidth = w; targetCell.style.maxWidth = w; }
-            }
-        }
-        for (let i = 0; i < sheet.rowH.length; i++) {
-            const h = sheet.rowH[i] + 'px';
-            const targetRow = rows[i+1];
-            if (targetRow) Array.from(targetRow.cells).forEach(cell => { cell.style.height = h; });
-        }
     }
 
     function initTable() {
@@ -201,6 +156,11 @@
                 const td = document.createElement('td');
                 td.contentEditable = "true";
                 td.innerText = cellData;
+                td.dataset.r = r; td.dataset.c = c;
+                
+                // Interaction Events
+                td.onmousedown = (e) => startSelection(e, r, c);
+                td.onmouseover = () => updateSelection(r, c);
                 td.onfocus = () => { td._oldVal = td.innerText; };
                 td.onblur = () => { 
                     if(td._oldVal !== td.innerText) {
@@ -216,12 +176,72 @@
         renderTabs();
     }
 
+    // --- Selection Logic ---
+    function startSelection(e, r, c) {
+        if (e.shiftKey && startCell) {
+            updateSelection(r, c);
+        } else {
+            isSelecting = true;
+            startCell = { r, c };
+            endCell = { r, c };
+            highlightRange();
+        }
+    }
+
+    function updateSelection(r, c) {
+        if (!isSelecting) return;
+        endCell = { r, c };
+        highlightRange();
+    }
+
+    function highlightRange() {
+        const rMin = Math.min(startCell.r, endCell.r);
+        const rMax = Math.max(startCell.r, endCell.r);
+        const cMin = Math.min(startCell.c, endCell.c);
+        const cMax = Math.max(startCell.c, endCell.c);
+
+        document.querySelectorAll('td').forEach(td => {
+            const r = parseInt(td.dataset.r);
+            const c = parseInt(td.dataset.c);
+            if (r >= rMin && r <= rMax && c >= cMin && c <= cMax) {
+                td.classList.add('selected');
+            } else {
+                td.classList.remove('selected');
+            }
+        });
+    }
+
+    function clearSelectedCells() {
+        const selected = document.querySelectorAll('td.selected');
+        if (selected.length === 0) return;
+        pushHistory();
+        selected.forEach(td => {
+            const r = td.dataset.r, c = td.dataset.c;
+            workbook[activeSheet].data[r][c] = "";
+            td.innerText = "";
+        });
+    }
+
+    function getSelectedRange() {
+        const selected = document.querySelectorAll('td.selected');
+        if (!selected.length) return null;
+        let rMin = Infinity, rMax = -Infinity, cMin = Infinity, cMax = -Infinity;
+        selected.forEach(td => {
+            const r = parseInt(td.dataset.r), c = parseInt(td.dataset.c);
+            rMin = Math.min(rMin, r); rMax = Math.max(rMax, r);
+            cMin = Math.min(cMin, c); cMax = Math.max(cMax, c);
+        });
+        return { rMin, rMax, cMin, cMax };
+    }
+
+    // --- Actions ---
     function modifyTable(type, action) {
         pushHistory();
-        const focus = getFocus();
-        let sheet = workbook[activeSheet];
-        const r = (focus) ? focus.r : sheet.data.length - 1;
-        const c = (focus) ? focus.c : sheet.data[0].length - 1;
+        const range = getSelectedRange();
+        const sheet = workbook[activeSheet];
+        const r = range ? range.rMin : sheet.data.length - 1;
+        const c = range ? range.cMin : sheet.data[0].length - 1;
+
         if (type === 'row') {
             const pos = (action === 'before') ? r : r + 1;
             sheet.data.splice(pos, 0, new Array(sheet.data[0].length).fill(""));
@@ -234,42 +254,57 @@
         initTable();
     }
 
-    function getFocus() {
-        const sel = window.getSelection();
-        if (!sel || !sel.rangeCount) return null;
-        let node = sel.anchorNode;
-        while (node && node.tagName !== 'TD') node = node.parentElement;
-        if (!node) return null;
-        return { r: node.parentElement.rowIndex - 1, c: node.cellIndex - 1 };
+    function deleteSelected(type) {
+        const range = getSelectedRange();
+        if (!range) return alert("請先選中範圍");
+        pushHistory();
+        let sheet = workbook[activeSheet];
+        if (type === 'row') {
+            const count = range.rMax - range.rMin + 1;
+            if (sheet.data.length <= count) return;
+            sheet.data.splice(range.rMin, count);
+            sheet.rowH.splice(range.rMin, count);
+        } else {
+            const count = range.cMax - range.cMin + 1;
+            if (sheet.data[0].length <= count) return;
+            sheet.data.forEach(row => row.splice(range.cMin, count));
+            sheet.colW.splice(range.cMin, count);
+        }
+        initTable();
     }
 
     function handlePaste(e) {
         e.preventDefault();
         const text = (e.clipboardData || window.clipboardData).getData('text');
         if (!text) return;
-        
-        const focus = getFocus(); if (!focus) return;
+        const range = getSelectedRange();
+        if (!range) return;
         pushHistory();
-        
         const rows = text.split(/\r\n|\n|\r/).filter(line => line.length > 0).map(r => r.split('\t'));
         let sheet = workbook[activeSheet];
-        
         rows.forEach((row, rIdx) => {
-            const tr = focus.r + rIdx;
-            if (!sheet.data[tr]) { 
-                sheet.data.push(new Array(sheet.data[0].length).fill("")); 
-                sheet.rowH.push(35); 
-            }
+            const tr = range.rMin + rIdx;
+            if (!sheet.data[tr]) { sheet.data[tr] = new Array(sheet.data[0].length).fill(""); sheet.rowH[tr] = 35; }
             row.forEach((val, cIdx) => {
-                const tc = focus.c + cIdx;
-                if (tc >= sheet.data[0].length) { 
-                    sheet.data.forEach(r => r.push("")); 
-                    sheet.colW.push(100); 
-                }
+                const tc = range.cMin + cIdx;
+                if (tc >= sheet.data[0].length) { sheet.data.forEach(r => r.push("")); sheet.colW.push(100); }
                 sheet.data[tr][tc] = val;
             });
         });
         initTable();
+    }
+
+    function renderStyles() {
+        const sheet = workbook[activeSheet];
+        const rows = document.getElementById('main-table').rows;
+        if(!rows.length) return;
+        for (let j = 0; j < sheet.colW.length; j++) {
+            const w = sheet.colW[j] + 'px';
+            for (let i = 0; i < rows.length; i++) {
+                const targetCell = rows[i].cells[j+1];
+                if (targetCell) { targetCell.style.width = w; targetCell.style.minWidth = w; }
+            }
+        }
     }
 
     function changeZoom(delta) {
@@ -299,16 +334,14 @@
         const token = document.getElementById('token').value;
         if(!token) return;
         localStorage.setItem('gh_token', token);
-        try {
-            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/`, { headers: { 'Authorization': `token ${token}` } });
-            const files = await res.json();
-            const list = document.getElementById('file-items');
-            list.innerHTML = "";
-            files.filter(f => f.name.endsWith('.json')).forEach(f => {
-                const d = document.createElement('div'); d.className = "file-item"; d.innerText = f.name;
-                d.onclick = () => loadFile(f.name); list.appendChild(d);
-            });
-        } catch(e) { alert("Fetch failed. Check token/repo."); }
+        const res = await fetch(`https://api.github.com/repos/${REPO}/contents/`, { headers: { 'Authorization': `token ${token}` } });
+        const files = await res.json();
+        const list = document.getElementById('file-items');
+        list.innerHTML = "";
+        files.filter(f => f.name.endsWith('.json')).forEach(f => {
+            const d = document.createElement('div'); d.className = "file-item"; d.innerText = f.name;
+            d.onclick = () => loadFile(f.name); list.appendChild(d);
+        });
     }
 
     async function loadFile(name) {
