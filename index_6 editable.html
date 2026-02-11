@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Simple Drive V12 - Multi-Select</title>
+    <title>Simple Drive V13 - Excel Fix</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
     <style>
         :root { --primary: #0969da; --success: #2ea44f; --danger: #cf222e; --gh-dark: #24292f; --select-bg: #e7f3ff; --select-border: #0969da; }
@@ -27,7 +27,6 @@
         table { border-collapse: collapse; background: white; transform-origin: top left; transition: transform 0.1s; table-layout: fixed; }
         td, th { border: 1px solid #d0d7de; padding: 4px 8px; font-size: 14px; outline: none; box-sizing: border-box; overflow: hidden; word-break: break-all; white-space: pre-wrap; line-height: 1.2; }
         th { background: #f6f8fa; font-size: 11px; color: #57606a; text-align: center; }
-        /* Selection Styles */
         td.selected { background: var(--select-bg) !important; outline: 1px solid var(--select-border); z-index: 2; }
         td:focus { background: white; outline: 2px solid var(--primary); z-index: 5; }
         .zoom-info { font-family: monospace; font-size: 13px; min-width: 45px; text-align: center; }
@@ -82,8 +81,6 @@
     let activeSheet = "Sheet1";
     let currentFile = null, currentSha = null, currentZoom = 1.0, lastSavedData = "";
     let undoStack = [], redoStack = [];
-
-    // Selection State
     let isSelecting = false, startCell = null, endCell = null;
 
     window.onload = () => {
@@ -92,18 +89,13 @@
         initTable();
         setInterval(autoSave, 30000);
         
-        // Global Keyboard Listeners
         window.addEventListener('keydown', e => {
-            if (e.ctrlKey || e.metaKey) {
-                if (e.key === 'z') { e.preventDefault(); undo(); }
-                if (e.key === 'y') { e.preventDefault(); redo(); }
-            }
+            if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undo(); }
+            if ((e.ctrlKey || e.metaKey) && e.key === 'y') { e.preventDefault(); redo(); }
             if (e.key === 'Delete' || e.key === 'Backspace') {
                 if (document.activeElement.tagName !== 'TD') clearSelectedCells();
             }
         });
-
-        // Mouse Selection Listeners
         document.addEventListener('mouseup', () => { isSelecting = false; });
     };
 
@@ -115,7 +107,7 @@
     }
 
     function undo() {
-        if (undoStack.length === 0) return;
+        if (!undoStack.length) return;
         redoStack.push(JSON.stringify(workbook));
         workbook = JSON.parse(undoStack.pop());
         initTable();
@@ -123,7 +115,7 @@
     }
 
     function redo() {
-        if (redoStack.length === 0) return;
+        if (!redoStack.length) return;
         undoStack.push(JSON.stringify(workbook));
         workbook = JSON.parse(redoStack.pop());
         initTable();
@@ -131,8 +123,55 @@
     }
 
     function updateHistoryButtons() {
-        document.getElementById('undoBtn').disabled = undoStack.length === 0;
-        document.getElementById('redoBtn').disabled = redoStack.length === 0;
+        document.getElementById('undoBtn').disabled = !undoStack.length;
+        document.getElementById('redoBtn').disabled = !redoStack.length;
+    }
+
+    // --- Excel Fix: The Paste Handler ---
+    function handlePaste(e) {
+        e.preventDefault();
+        const clipboardData = e.clipboardData || window.clipboardData;
+        const text = clipboardData.getData('text');
+        if (!text) return;
+
+        // Determine paste start point: Selected range top-left OR currently focused cell
+        const range = getSelectedRange();
+        const focus = getFocus();
+        const startR = range ? range.rMin : (focus ? focus.r : 0);
+        const startC = range ? range.cMin : (focus ? focus.c : 0);
+
+        pushHistory();
+        let sheet = workbook[activeSheet];
+
+        // Sanitize Excel logic: 
+        // 1. Split rows. 2. Split columns by Tab. 3. Strip surrounding quotes added by Excel for multi-line cells.
+        const rows = text.split(/\r\n|\n|\r/).filter((row, i, arr) => i < arr.length - 1 || row.trim() !== "").map(row => {
+            return row.split('\t').map(cell => {
+                let c = cell.trim();
+                if (c.startsWith('"') && c.endsWith('"')) c = c.slice(1, -1).replace(/""/g, '"');
+                return c;
+            });
+        });
+
+        rows.forEach((rowData, rIdx) => {
+            const targetR = startR + rIdx;
+            // Expand Rows
+            while (targetR >= sheet.data.length) {
+                sheet.data.push(new Array(sheet.data[0].length).fill(""));
+                sheet.rowH.push(35);
+            }
+            rowData.forEach((val, cIdx) => {
+                const targetC = startC + cIdx;
+                // Expand Columns
+                while (targetC >= sheet.data[0].length) {
+                    sheet.data.forEach(r => r.push(""));
+                    sheet.colW.push(100);
+                }
+                sheet.data[targetR][targetC] = val;
+            });
+        });
+
+        initTable();
     }
 
     function initTable() {
@@ -157,16 +196,10 @@
                 td.contentEditable = "true";
                 td.innerText = cellData;
                 td.dataset.r = r; td.dataset.c = c;
-                
-                // Interaction Events
-                td.onmousedown = (e) => startSelection(e, r, c);
-                td.onmouseover = () => updateSelection(r, c);
-                td.onfocus = () => { td._oldVal = td.innerText; };
+                td.onmousedown = (e) => { isSelecting = true; startCell = {r, c}; endCell = {r, c}; highlightRange(); };
+                td.onmouseover = () => { if(isSelecting) { endCell = {r, c}; highlightRange(); } };
                 td.onblur = () => { 
-                    if(td._oldVal !== td.innerText) {
-                        pushHistory();
-                        sheet.data[r][c] = td.innerText; 
-                    }
+                    if(sheet.data[r][c] !== td.innerText) { pushHistory(); sheet.data[r][c] = td.innerText; }
                 };
                 tr.appendChild(td);
             });
@@ -176,56 +209,19 @@
         renderTabs();
     }
 
-    // --- Selection Logic ---
-    function startSelection(e, r, c) {
-        if (e.shiftKey && startCell) {
-            updateSelection(r, c);
-        } else {
-            isSelecting = true;
-            startCell = { r, c };
-            endCell = { r, c };
-            highlightRange();
-        }
-    }
-
-    function updateSelection(r, c) {
-        if (!isSelecting) return;
-        endCell = { r, c };
-        highlightRange();
-    }
-
     function highlightRange() {
-        const rMin = Math.min(startCell.r, endCell.r);
-        const rMax = Math.max(startCell.r, endCell.r);
-        const cMin = Math.min(startCell.c, endCell.c);
-        const cMax = Math.max(startCell.c, endCell.c);
-
+        const rMin = Math.min(startCell.r, endCell.r), rMax = Math.max(startCell.r, endCell.r);
+        const cMin = Math.min(startCell.c, endCell.c), cMax = Math.max(startCell.c, endCell.c);
         document.querySelectorAll('td').forEach(td => {
-            const r = parseInt(td.dataset.r);
-            const c = parseInt(td.dataset.c);
-            if (r >= rMin && r <= rMax && c >= cMin && c <= cMax) {
-                td.classList.add('selected');
-            } else {
-                td.classList.remove('selected');
-            }
-        });
-    }
-
-    function clearSelectedCells() {
-        const selected = document.querySelectorAll('td.selected');
-        if (selected.length === 0) return;
-        pushHistory();
-        selected.forEach(td => {
-            const r = td.dataset.r, c = td.dataset.c;
-            workbook[activeSheet].data[r][c] = "";
-            td.innerText = "";
+            const r = parseInt(td.dataset.r), c = parseInt(td.dataset.c);
+            td.classList.toggle('selected', r >= rMin && r <= rMax && c >= cMin && c <= cMax);
         });
     }
 
     function getSelectedRange() {
         const selected = document.querySelectorAll('td.selected');
         if (!selected.length) return null;
-        let rMin = Infinity, rMax = -Infinity, cMin = Infinity, cMax = -Infinity;
+        let rMin = 999, rMax = 0, cMin = 999, cMax = 0;
         selected.forEach(td => {
             const r = parseInt(td.dataset.r), c = parseInt(td.dataset.c);
             rMin = Math.min(rMin, r); rMax = Math.max(rMax, r);
@@ -234,20 +230,35 @@
         return { rMin, rMax, cMin, cMax };
     }
 
-    // --- Actions ---
+    function getFocus() {
+        const sel = window.getSelection();
+        if (!sel.rangeCount) return null;
+        let node = sel.anchorNode;
+        while (node && node.tagName !== 'TD') node = node.parentElement;
+        if (!node) return null;
+        return { r: parseInt(node.dataset.r), c: parseInt(node.dataset.c) };
+    }
+
+    function clearSelectedCells() {
+        const selected = document.querySelectorAll('td.selected');
+        if (!selected.length) return;
+        pushHistory();
+        selected.forEach(td => {
+            workbook[activeSheet].data[td.dataset.r][td.dataset.c] = "";
+            td.innerText = "";
+        });
+    }
+
     function modifyTable(type, action) {
         pushHistory();
-        const range = getSelectedRange();
-        const sheet = workbook[activeSheet];
-        const r = range ? range.rMin : sheet.data.length - 1;
-        const c = range ? range.cMin : sheet.data[0].length - 1;
-
+        const focus = getFocus() || {r:0, c:0};
+        let sheet = workbook[activeSheet];
         if (type === 'row') {
-            const pos = (action === 'before') ? r : r + 1;
+            const pos = (action === 'before') ? focus.r : focus.r + 1;
             sheet.data.splice(pos, 0, new Array(sheet.data[0].length).fill(""));
             sheet.rowH.splice(pos, 0, 35);
         } else {
-            const pos = (action === 'before') ? c : c + 1;
+            const pos = (action === 'before') ? focus.c : focus.c + 1;
             sheet.data.forEach(row => row.splice(pos, 0, ""));
             sheet.colW.splice(pos, 0, 100);
         }
@@ -256,41 +267,16 @@
 
     function deleteSelected(type) {
         const range = getSelectedRange();
-        if (!range) return alert("請先選中範圍");
+        if (!range) return;
         pushHistory();
         let sheet = workbook[activeSheet];
         if (type === 'row') {
-            const count = range.rMax - range.rMin + 1;
-            if (sheet.data.length <= count) return;
-            sheet.data.splice(range.rMin, count);
-            sheet.rowH.splice(range.rMin, count);
+            sheet.data.splice(range.rMin, range.rMax - range.rMin + 1);
+            sheet.rowH.splice(range.rMin, range.rMax - range.rMin + 1);
         } else {
-            const count = range.cMax - range.cMin + 1;
-            if (sheet.data[0].length <= count) return;
-            sheet.data.forEach(row => row.splice(range.cMin, count));
-            sheet.colW.splice(range.cMin, count);
+            sheet.data.forEach(row => row.splice(range.cMin, range.cMax - range.cMin + 1));
+            sheet.colW.splice(range.cMin, range.cMax - range.cMin + 1);
         }
-        initTable();
-    }
-
-    function handlePaste(e) {
-        e.preventDefault();
-        const text = (e.clipboardData || window.clipboardData).getData('text');
-        if (!text) return;
-        const range = getSelectedRange();
-        if (!range) return;
-        pushHistory();
-        const rows = text.split(/\r\n|\n|\r/).filter(line => line.length > 0).map(r => r.split('\t'));
-        let sheet = workbook[activeSheet];
-        rows.forEach((row, rIdx) => {
-            const tr = range.rMin + rIdx;
-            if (!sheet.data[tr]) { sheet.data[tr] = new Array(sheet.data[0].length).fill(""); sheet.rowH[tr] = 35; }
-            row.forEach((val, cIdx) => {
-                const tc = range.cMin + cIdx;
-                if (tc >= sheet.data[0].length) { sheet.data.forEach(r => r.push("")); sheet.colW.push(100); }
-                sheet.data[tr][tc] = val;
-            });
-        });
         initTable();
     }
 
@@ -301,8 +287,8 @@
         for (let j = 0; j < sheet.colW.length; j++) {
             const w = sheet.colW[j] + 'px';
             for (let i = 0; i < rows.length; i++) {
-                const targetCell = rows[i].cells[j+1];
-                if (targetCell) { targetCell.style.width = w; targetCell.style.minWidth = w; }
+                const cell = rows[i].cells[j+1];
+                if (cell) { cell.style.width = w; cell.style.minWidth = w; }
             }
         }
     }
