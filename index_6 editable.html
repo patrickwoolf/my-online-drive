@@ -15,7 +15,7 @@
         .btn { padding: 4px 8px; border: 1px solid #d0d7de; border-radius: 6px; cursor: pointer; background: #f6f8fa; font-size: 11px; font-weight: 600; white-space: nowrap; }
         .btn:active { opacity: 0.7; }
         .btn-group { display: flex; gap: 3px; border-right: 1px solid #ddd; padding-right: 8px; margin-right: 5px; flex-shrink: 0; flex-direction: column; height: 100%; justify-content: center; }
-        .group-row { display: flex; gap: 3px; }
+        .group-row { display: flex; gap: 3px; align-items: center; }
         .group-label { font-size: 10px; color: #888; margin-bottom: 2px; font-weight: bold; text-transform: uppercase; }
         #sidebar { position: fixed; left: 0; top: 0; width: 260px; height: 100%; background: white; transform: translateX(-100%); transition: 0.3s; z-index: 1000; box-shadow: 5px 0 15px rgba(0,0,0,0.1); }
         #sidebar.open { transform: translateX(0); }
@@ -24,15 +24,15 @@
         .tab { padding: 8px 15px; border-right: 1px solid #d0d7de; cursor: pointer; font-size: 11px; background: #eaeef2; }
         .tab.active { background: #fff; border-bottom: 2px solid var(--primary); font-weight: bold; }
         #editor-container { padding: 20px; overflow: auto; height: calc(100vh - 155px); background: #eee; }
-        table { border-collapse: collapse; background: white; table-layout: fixed; }
+        table { border-collapse: collapse; background: white; table-layout: fixed; transform-origin: 0 0; }
         td, th { border: 1px solid #d0d7de; padding: 4px; font-size: 14px; outline: none; box-sizing: border-box; overflow: hidden; position: relative; }
-        /* 核心格式控制 */
         td.wrap-text { white-space: pre-wrap; word-break: break-all; }
         td.line-text { white-space: pre; text-overflow: ellipsis; }
         th { background: #f6f8fa; font-size: 11px; color: #57606a; text-align: center; }
         td.selected { background: var(--select-bg) !important; outline: 1px solid var(--select-border); z-index: 2; }
         #import-modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; border-radius: 8px; padding: 20px; z-index: 2000; box-shadow: 0 5px 30px rgba(0,0,0,0.3); display: none; width: 400px; }
         #import-modal textarea { width: 100%; height: 200px; margin: 10px 0; }
+        .zoom-display { font-size: 11px; font-weight: bold; color: var(--primary); min-width: 35px; text-align: center; }
     </style>
 </head>
 <body>
@@ -71,10 +71,20 @@
     </div>
 
     <div class="btn-group">
-        <span class="group-label">文字格式</span>
+        <span class="group-label">選定格格式</span>
         <div class="group-row">
             <button class="btn" onclick="setTextFormat('wrap')">Wrap (自動換行)</button>
             <button class="btn" onclick="setTextFormat('line')">Line (單行)</button>
+        </div>
+    </div>
+
+    <div class="btn-group">
+        <span class="group-label">頁面縮放</span>
+        <div class="group-row">
+            <button class="btn" onclick="adjustZoom(-0.1)">➖</button>
+            <span id="zoom-text" class="zoom-display">100%</span>
+            <button class="btn" onclick="adjustZoom(0.1)">➕</button>
+            <button class="btn" onclick="resetZoom()">重設</button>
         </div>
     </div>
 
@@ -126,10 +136,11 @@
 
 <script>
     const REPO = "patrickwoolf/my-online-drive";
-    let workbook = { "Sheet1": { data: [["","",""]], rowH: [35], colW: [100,100,100], format: "wrap" } };
+    let workbook = { "Sheet1": { data: [["","",""]], rowH: [35], colW: [100,100,100], format: "wrap", cellStyles: {} } };
     let activeSheet = "Sheet1";
     let currentFile = null, currentSha = null, lastSavedData = "";
     let undoStack = [], redoStack = [], isSelecting = false, startCell = null, endCell = null;
+    let currentZoom = 1.0;
 
     window.onload = () => {
         const saved = localStorage.getItem('gh_token');
@@ -139,14 +150,37 @@
         document.addEventListener('mouseup', () => { isSelecting = false; });
     };
 
-    // --- 核心：文字格式切換 ---
-    function setTextFormat(type) {
-        pushHistory();
-        workbook[activeSheet].format = type;
-        initTable();
+    // --- 縮放功能 ---
+    function adjustZoom(delta) {
+        currentZoom = Math.max(0.1, Math.min(4.0, currentZoom + delta));
+        applyZoom();
+    }
+    function resetZoom() {
+        currentZoom = 1.0;
+        applyZoom();
+    }
+    function applyZoom() {
+        document.getElementById('main-table').style.zoom = currentZoom;
+        document.getElementById('zoom-text').innerText = Math.round(currentZoom * 100) + "%";
     }
 
-    // --- 核心：寬高調整 (選定與全部) ---
+    // --- 文字格式：針對特定選定格 ---
+    function setTextFormat(type) {
+        const selected = document.querySelectorAll('td.selected');
+        if (!selected.length) return alert("請先選取儲存格");
+        
+        pushHistory();
+        const sheet = workbook[activeSheet];
+        if (!sheet.cellStyles) sheet.cellStyles = {};
+
+        selected.forEach(td => {
+            const r = td.dataset.r, c = td.dataset.c;
+            sheet.cellStyles[`${r}-${c}`] = type;
+            td.className = (type === 'wrap' ? 'wrap-text' : 'line-text') + ' selected';
+        });
+    }
+
+    // --- 核心：寬高調整 ---
     function resize(scope, type, factor) {
         pushHistory();
         const sheet = workbook[activeSheet];
@@ -167,10 +201,9 @@
         renderStyles();
     }
 
-    // --- 歷史紀錄邏輯 ---
     function pushHistory() {
         undoStack.push(JSON.stringify(workbook));
-        redoStack = []; // 每次動作後清空重做棧
+        redoStack = [];
         if(undoStack.length > 50) undoStack.shift();
     }
     function undo() {
@@ -188,7 +221,6 @@
         }
     }
 
-    // --- 基礎功能與渲染 ---
     function initTable() {
         const sheet = workbook[activeSheet];
         const table = document.getElementById('main-table');
@@ -200,6 +232,9 @@
             thead.appendChild(th);
         }
         table.appendChild(thead);
+        
+        const styles = sheet.cellStyles || {};
+        
         sheet.data.forEach((rowData, r) => {
             const tr = document.createElement('tr');
             const th = document.createElement('th'); th.innerText = r + 1;
@@ -209,8 +244,11 @@
                 td.contentEditable = "true"; 
                 td.innerText = cellData;
                 td.dataset.r = r; td.dataset.c = c;
-                // 套用格式 class
-                td.className = (sheet.format === 'wrap' ? 'wrap-text' : 'line-text');
+                
+                // 判斷該格專用格式或工作表預設格式
+                const cellFormat = styles[`${r}-${c}`] || sheet.format || 'wrap';
+                td.className = (cellFormat === 'wrap' ? 'wrap-text' : 'line-text');
+                
                 td.onmousedown = (e) => { isSelecting = true; startCell = {r, c}; endCell = {r, c}; highlightRange(); };
                 td.onmouseover = () => { if(isSelecting) { endCell = {r, c}; highlightRange(); } };
                 td.onblur = () => { if(sheet.data[r][c] !== td.innerText) { pushHistory(); sheet.data[r][c] = td.innerText; } };
@@ -220,6 +258,7 @@
         });
         renderStyles();
         renderTabs();
+        applyZoom(); // 換分頁時重新套用縮放
     }
 
     function renderStyles() {
@@ -240,7 +279,6 @@
         }
     }
 
-    // --- 增刪邏輯 ---
     function modifyTable(type, action) {
         pushHistory();
         const f = getFocus() || {r:0, c:0};
@@ -272,7 +310,6 @@
         initTable();
     }
 
-    // --- 其他輔助 ---
     function getSelectedRange() {
         const selected = document.querySelectorAll('td.selected');
         if (!selected.length) return null;
@@ -331,8 +368,8 @@
     async function saveToCloud() { const dataStr = JSON.stringify(workbook); const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentFile}`, { method: 'PUT', headers: { 'Authorization': `token ${document.getElementById('token').value}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ message: "AutoSave", content: btoa(String.fromCharCode.apply(null, pako.gzip(dataStr))), sha: currentSha }) }); const json = await res.json(); if(json.content) { currentSha = json.content.sha; lastSavedData = dataStr; } }
     async function autoSave() { if (currentFile && JSON.stringify(workbook) !== lastSavedData) { await saveToCloud(); document.getElementById('status').innerText = currentFile; } }
     function manualSave() { if(currentFile) saveToCloud(); }
-    function addNewSheet() { const name = prompt("分頁名稱:"); if (name && !workbook[name]) { pushHistory(); workbook[name] = { data: [["",""]], rowH: [35], colW: [100,100], format: "wrap" }; activeSheet = name; initTable(); } }
-    function createNewFile() { let name = prompt("新檔名:"); if (!name) return; if (!name.endsWith('.json')) name += '.json'; currentFile = name; workbook = { "Sheet1": { data: [["",""]], rowH:[35], colW:[100,100], format: "wrap" } }; saveToCloud().then(fetchFiles); }
+    function addNewSheet() { const name = prompt("分頁名稱:"); if (name && !workbook[name]) { pushHistory(); workbook[name] = { data: [["",""]], rowH: [35], colW: [100,100], format: "wrap", cellStyles: {} }; activeSheet = name; initTable(); } }
+    function createNewFile() { let name = prompt("新檔名:"); if (!name) return; if (!name.endsWith('.json')) name += '.json'; currentFile = name; workbook = { "Sheet1": { data: [["",""]], rowH:[35], colW:[100,100], format: "wrap", cellStyles: {} } }; saveToCloud().then(fetchFiles); }
 </script>
 </body>
 </html>
