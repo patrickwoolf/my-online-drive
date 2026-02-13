@@ -2,19 +2,29 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>CloudDrive Editor</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
-        #editor { min-height: calc(100vh - 160px); padding: 1.5rem; overflow-y: auto; outline: none; transition: all 0.2s; }
+        /* Mobile Scroll Fixes */
+        #scroll-container { 
+            height: calc(100vh - 160px); 
+            overflow-y: auto; 
+            -webkit-overflow-scrolling: touch; 
+        }
+        #editor { 
+            min-height: 100%; 
+            padding: 1.5rem 1.5rem 15rem 1.5rem; /* Large bottom padding for mobile keyboard */
+            outline: none; 
+        }
         /* Sidebar logic */
-        #sidebar { transition: transform 0.3s ease; width: 280px; }
+        #sidebar { transition: transform 0.3s ease; width: 280px; z-index: 50; }
         .sidebar-hidden { transform: translateX(-100%); }
-        /* Mobile Overlay */
+        
         #overlay { display: none; }
         @media (max-width: 768px) {
-            #sidebar { position: fixed; height: 100vh; z-index: 50; }
+            #sidebar { position: fixed; height: 100vh; }
             .sidebar-open #overlay { display: block; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 40; }
         }
         .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
@@ -22,6 +32,7 @@
         .status-unsaved { background: #ef4444; }
         .status-syncing { background: #3b82f6; animation: pulse 1s infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900 font-sans h-screen flex flex-col overflow-hidden">
@@ -41,9 +52,9 @@
                 </div>
                 <div class="flex items-center gap-2">
                     <div id="saveStatus" class="text-[10px] uppercase font-bold text-slate-400 flex items-center mr-2">
-                        <span class="status-dot status-saved mr-1"></span> <span>Synced</span>
+                        <span class="status-dot status-saved mr-1"></span> <span>Ready</span>
                     </div>
-                    <button onclick="syncFiles()" class="bg-blue-600 text-white p-1.5 rounded-md transition-colors">
+                    <button onclick="syncFiles()" class="bg-blue-600 text-white p-1.5 rounded-md">
                         <i data-lucide="refresh-cw" size="16"></i>
                     </button>
                 </div>
@@ -56,27 +67,28 @@
     </header>
 
     <div class="flex flex-1 overflow-hidden">
-        <aside id="sidebar" class="sidebar-hidden bg-white border-r flex flex-col shadow-xl md:shadow-none">
+        <aside id="sidebar" class="sidebar-hidden bg-white border-r flex flex-col shadow-xl md:shadow-none absolute md:relative h-full">
             <div class="p-4 flex justify-between items-center border-b bg-slate-50">
                 <span class="text-xs font-bold uppercase text-slate-500">Files</span>
                 <button onclick="createNewFile()" class="p-1.5 text-blue-600 hover:bg-blue-100 rounded-md">
                     <i data-lucide="file-plus" size="18"></i>
                 </button>
             </div>
-            <div id="fileList" class="flex-1 overflow-y-auto p-2 space-y-1">
-                </div>
+            <div id="fileList" class="flex-1 overflow-y-auto p-2 space-y-1"></div>
         </aside>
 
         <main class="flex-1 flex flex-col bg-white overflow-hidden w-full">
             <div class="p-1 border-b flex items-center gap-1 bg-slate-50/50 overflow-x-auto no-scrollbar">
-                <button onclick="exec('bold')" class="p-2 min-w-[40px] flex justify-center"><i data-lucide="bold" size="16"></i></button>
-                <button onclick="exec('italic')" class="p-2 min-w-[40px] flex justify-center"><i data-lucide="italic" size="16"></i></button>
-                <button onclick="insertTable()" class="p-2 min-w-[40px] flex justify-center"><i data-lucide="table" size="16"></i></button>
+                <button onclick="exec('bold')" class="p-2 min-w-[40px]"><i data-lucide="bold" size="16"></i></button>
+                <button onclick="exec('italic')" class="p-2 min-w-[40px]"><i data-lucide="italic" size="16"></i></button>
+                <button onclick="insertTable()" class="p-2 min-w-[40px]"><i data-lucide="table" size="16"></i></button>
                 <div class="h-4 w-px bg-slate-300 mx-1"></div>
                 <span id="currentFileName" class="text-xs font-medium text-slate-500 truncate px-2">No file open</span>
             </div>
 
-            <div id="editor" contenteditable="true" class="prose max-w-none text-base"></div>
+            <div id="scroll-container">
+                <div id="editor" contenteditable="true" class="prose max-w-none text-base"></div>
+            </div>
         </main>
     </div>
 
@@ -88,10 +100,19 @@
 
         lucide.createIcons();
 
-        // Initialize Token
         const tokenInput = document.getElementById('ghToken');
         tokenInput.value = localStorage.getItem('gh_token') || '';
-        tokenInput.addEventListener('input', (e) => localStorage.setItem('gh_token', e.target.value));
+        
+        // AUTO SYNC ON LOAD
+        window.addEventListener('DOMContentLoaded', () => {
+            if (tokenInput.value) {
+                syncFiles();
+            }
+        });
+
+        tokenInput.addEventListener('input', (e) => {
+            localStorage.setItem('gh_token', e.target.value);
+        });
 
         const getHeaders = () => ({
             'Authorization': `token ${tokenInput.value}`,
@@ -111,6 +132,8 @@
         }
 
         async function syncFiles() {
+            if (!tokenInput.value) return;
+            updateStatus('syncing', 'Syncing...');
             try {
                 const res = await fetch(`https://api.github.com/repos/${REPO}/contents/`, { headers: getHeaders() });
                 const files = await res.json();
@@ -120,7 +143,7 @@
                 files.forEach(file => {
                     if (file.type === 'dir') return;
                     const div = document.createElement('div');
-                    div.className = 'flex justify-between items-center p-3 hover:bg-blue-50 rounded-md cursor-pointer border-b border-slate-50 sm:border-0';
+                    div.className = 'flex justify-between items-center p-3 hover:bg-blue-50 rounded-md cursor-pointer';
                     div.innerHTML = `
                         <div class="flex items-center gap-3 truncate flex-grow" onclick="selectFile('${file.path}', '${file.sha}')">
                             <i data-lucide="file-text" size="16" class="text-blue-400"></i>
@@ -133,7 +156,8 @@
                     list.appendChild(div);
                 });
                 lucide.createIcons();
-            } catch (err) { alert('Check your Token and Internet Connection'); }
+                updateStatus('saved', 'Ready');
+            } catch (err) { updateStatus('unsaved', 'Sync Error'); }
         }
 
         async function selectFile(path, sha) {
@@ -153,11 +177,12 @@
                 currentFileSha = sha;
                 isDirty = false;
                 updateStatus('saved', 'Synced');
+                document.getElementById('scroll-container').scrollTop = 0;
             } catch (e) { updateStatus('unsaved', 'Load Failed'); }
         }
 
         async function createNewFile() {
-            const name = prompt("New filename:");
+            const name = prompt("New filename (e.g. todo.html):");
             if (!name) return;
             currentFilePath = name;
             currentFileSha = '';
@@ -177,7 +202,7 @@
                     method: 'PUT',
                     headers: getHeaders(),
                     body: JSON.stringify({
-                        message: `Auto-save: ${currentFilePath}`,
+                        message: `CloudDrive: ${currentFilePath}`,
                         content: content,
                         sha: currentFileSha || undefined
                     })
@@ -193,7 +218,6 @@
             } catch (e) { updateStatus('unsaved', 'Error'); }
         }
 
-        // Auto-save logic
         document.getElementById('editor').addEventListener('input', () => {
             if (!isDirty) {
                 isDirty = true;
@@ -206,8 +230,10 @@
         function updateStatus(type, text) {
             const dot = document.querySelector('.status-dot');
             const label = document.querySelector('#saveStatus span:last-child');
-            dot.className = `status-dot status-${type}`;
-            label.textContent = text;
+            if(dot && label) {
+                dot.className = `status-dot status-${type}`;
+                label.textContent = text;
+            }
         }
 
         function exec(command) { document.execCommand(command, false, null); }
