@@ -7,110 +7,137 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
-        #editor { min-height: 400px; border: 1px solid #e2e8f0; padding: 1rem; border-radius: 0.5rem; overflow-y: auto; }
-        #editor:focus { outline: 2px solid #3b82f6; }
+        #editor { min-height: calc(100vh - 180px); padding: 2rem; overflow-y: auto; outline: none; }
+        .sidebar-transition { transition: all 0.3s ease-in-out; }
         .file-item:hover .file-actions { display: flex; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+        .status-saved { background-color: #22c55e; }
+        .status-unsaved { background-color: #ef4444; }
+        .status-syncing { background-color: #3b82f6; animation: pulse 1s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
     </style>
 </head>
-<body class="bg-slate-50 text-slate-900 font-sans">
+<body class="bg-slate-50 text-slate-900 font-sans h-screen flex flex-col overflow-hidden">
 
-    <header class="bg-white border-b p-4 shadow-sm">
-        <div class="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
-            <h1 class="text-xl font-bold flex items-center gap-2">
-                <i data-lucide="hard-drive" class="text-blue-600"></i> My Online Drive
-            </h1>
-            <div class="flex gap-2 w-full md:w-auto">
-                <input type="password" id="ghToken" placeholder="Enter GitHub Fine-grained Token" 
-                       class="border rounded px-3 py-1 text-sm flex-grow md:w-64 focus:ring-2 focus:ring-blue-400 outline-none">
-                <button onclick="syncFiles()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1 rounded text-sm flex items-center gap-2">
-                    <i data-lucide="refresh-cw" size="16"></i> Sync
+    <header class="bg-white border-b p-3 shadow-sm z-20">
+        <div class="flex justify-between items-center px-4">
+            <div class="flex items-center gap-4">
+                <button onclick="toggleSidebar()" class="p-2 hover:bg-slate-100 rounded-md">
+                    <i data-lucide="menu" size="20"></i>
+                </button>
+                <h1 class="text-lg font-bold flex items-center gap-2">
+                    <i data-lucide="cloud-cog" class="text-blue-600"></i> CloudDrive
+                </h1>
+            </div>
+            
+            <div class="flex items-center gap-3">
+                <div id="saveStatus" class="text-xs text-slate-400 flex items-center mr-4">
+                    <span class="status-dot status-saved"></span> Up to date
+                </div>
+                <input type="password" id="ghToken" placeholder="GitHub Token" 
+                       class="border rounded-md px-3 py-1 text-sm w-48 focus:ring-2 focus:ring-blue-400 outline-none bg-slate-50">
+                <button onclick="syncFiles()" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-md text-sm flex items-center gap-2 transition-colors">
+                    <i data-lucide="refresh-cw" size="14"></i> Sync
                 </button>
             </div>
         </div>
     </header>
 
-    <main class="max-w-6xl mx-auto p-4 grid grid-cols-1 md:grid-cols-4 gap-6">
-        
-        <aside class="md:col-span-1 bg-white rounded-lg shadow p-4">
-            <div class="flex justify-between items-center mb-4">
-                <h2 class="font-semibold text-slate-600">Files</h2>
-                <button onclick="createNewFile()" class="p-1 hover:bg-slate-100 rounded text-blue-600" title="New File">
-                    <i data-lucide="file-plus" size="20"></i>
+    <div class="flex flex-1 overflow-hidden relative">
+        <aside id="sidebar" class="sidebar-transition w-72 bg-white border-r flex flex-col absolute md:relative h-full z-10 translate-x-0">
+            <div class="p-4 flex justify-between items-center border-b">
+                <span class="text-sm font-semibold uppercase text-slate-500 tracking-wider">File Explorer</span>
+                <button onclick="createNewFile()" class="p-1.5 hover:bg-blue-50 text-blue-600 rounded-md transition-colors" title="New File">
+                    <i data-lucide="file-plus" size="18"></i>
                 </button>
             </div>
-            <div id="fileList" class="space-y-1 text-sm">
-                <p class="text-slate-400 italic">No files loaded...</p>
+            <div id="fileList" class="flex-1 overflow-y-auto p-2 space-y-1">
+                <p class="p-4 text-xs text-slate-400 italic">Enter token and click sync...</p>
             </div>
         </aside>
 
-        <section class="md:col-span-3 space-y-4">
-            <div class="bg-white rounded-lg shadow p-4">
-                <div class="flex flex-wrap gap-2 mb-4 pb-4 border-b">
-                    <button onclick="exec('bold')" class="p-2 hover:bg-slate-100 rounded" title="Bold"><i data-lucide="bold" size="18"></i></button>
-                    <button onclick="exec('italic')" class="p-2 hover:bg-slate-100 rounded" title="Italic"><i data-lucide="italic" size="18"></i></button>
-                    <button onclick="insertTable()" class="p-2 hover:bg-slate-100 rounded" title="Insert Table"><i data-lucide="table" size="18"></i></button>
-                    <div class="h-6 w-px bg-slate-200 mx-1"></div>
-                    <button onclick="saveCurrentFile()" id="saveBtn" class="bg-green-600 hover:bg-green-700 text-white px-4 py-1 rounded text-sm disabled:opacity-50">
-                        Save Changes
-                    </button>
-                    <span id="currentFileName" class="ml-auto text-sm text-slate-500 self-center"></span>
-                </div>
-
-                <div id="editor" contenteditable="true" class="bg-white"></div>
-                <p class="text-xs text-slate-400 mt-2 italic">Tip: Paste images directly into the editor.</p>
+        <main class="flex-1 flex flex-col bg-white overflow-hidden">
+            <div class="p-2 border-b flex items-center gap-1 bg-slate-50/50">
+                <button onclick="exec('bold')" class="p-2 hover:bg-white hover:shadow-sm rounded" title="Bold"><i data-lucide="bold" size="16"></i></button>
+                <button onclick="exec('italic')" class="p-2 hover:bg-white hover:shadow-sm rounded" title="Italic"><i data-lucide="italic" size="16"></i></button>
+                <button onclick="insertTable()" class="p-2 hover:bg-white hover:shadow-sm rounded" title="Insert Table"><i data-lucide="table" size="16"></i></button>
+                <div class="h-4 w-px bg-slate-300 mx-2"></div>
+                <button onclick="saveCurrentFile()" class="p-2 hover:bg-white hover:shadow-sm rounded text-green-600" title="Manual Save"><i data-lucide="save" size="16"></i></button>
+                <span id="currentFileName" class="ml-4 text-sm font-medium text-slate-600"></span>
             </div>
-        </section>
-    </main>
+
+            <div id="editor" contenteditable="true" class="prose max-w-none"></div>
+        </main>
+    </div>
 
     <script>
         const REPO = 'patrickwoolf/my-online-drive';
         let currentFilePath = '';
         let currentFileSha = '';
+        let isDirty = false;
 
-        // Initialize Lucide Icons
         lucide.createIcons();
 
-        // Local Storage for Token
+        // Token Management
         const tokenInput = document.getElementById('ghToken');
         tokenInput.value = localStorage.getItem('gh_token') || '';
         tokenInput.addEventListener('input', (e) => localStorage.setItem('gh_token', e.target.value));
 
-        // Core API Header Helper
         const getHeaders = () => ({
             'Authorization': `token ${tokenInput.value}`,
             'Accept': 'application/vnd.github.v3+json'
         });
 
-        // 1. Sync / List Files
+        // 1. Sidebar Toggle
+        function toggleSidebar() {
+            const sb = document.getElementById('sidebar');
+            sb.classList.toggle('-translate-x-full');
+            if (sb.classList.contains('-translate-x-full')) {
+                sb.style.width = '0';
+            } else {
+                sb.style.width = '18rem';
+            }
+        }
+
+        // 2. File Operations
         async function syncFiles() {
             try {
                 const res = await fetch(`https://api.github.com/repos/${REPO}/contents/`, { headers: getHeaders() });
                 const files = await res.json();
-                
                 const list = document.getElementById('fileList');
                 list.innerHTML = '';
                 
                 files.forEach(file => {
                     if (file.type === 'dir') return;
                     const div = document.createElement('div');
-                    div.className = 'file-item group flex justify-between items-center p-2 hover:bg-blue-50 rounded cursor-pointer';
+                    div.className = 'file-item group flex justify-between items-center p-2 hover:bg-blue-50 rounded-md cursor-pointer transition-colors';
                     div.innerHTML = `
-                        <span class="truncate flex-grow" onclick="loadFile('${file.path}', '${file.sha}')">${file.name}</span>
-                        <div class="file-actions hidden gap-1">
-                            <button onclick="renameFile('${file.path}', '${file.sha}')" title="Rename"><i data-lucide="edit-3" size="14"></i></button>
-                            <button onclick="deleteFile('${file.path}', '${file.sha}')" class="text-red-500" title="Delete"><i data-lucide="trash-2" size="14"></i></button>
+                        <div class="flex items-center gap-2 truncate flex-grow" onclick="loadFile('${file.path}', '${file.sha}')">
+                            <i data-lucide="file-text" size="14" class="text-slate-400"></i>
+                            <span class="truncate text-sm text-slate-700">${file.name}</span>
+                        </div>
+                        <div class="file-actions hidden gap-1 bg-blue-50 pl-2">
+                            <button onclick="deleteFile('${file.path}', '${file.sha}')" class="text-slate-400 hover:text-red-500 p-1"><i data-lucide="trash-2" size="14"></i></button>
                         </div>
                     `;
                     list.appendChild(div);
                 });
                 lucide.createIcons();
-            } catch (err) {
-                alert('Failed to sync. Check token and repo permissions.');
-            }
+            } catch (err) { alert('Sync failed. Check token/repo.'); }
         }
 
-        // 2. Load File Content
+        async function createNewFile() {
+            const name = prompt("Filename (e.g., index.html):");
+            if (!name) return;
+            currentFilePath = name;
+            currentFileSha = '';
+            document.getElementById('editor').innerHTML = '<p>Start typing...</p>';
+            document.getElementById('currentFileName').innerText = name;
+            await saveCurrentFile(); // Initial save to create file on GitHub
+        }
+
         async function loadFile(path, sha) {
+            updateStatus('syncing', 'Loading...');
             const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { headers: getHeaders() });
             const data = await res.json();
             const content = decodeURIComponent(escape(atob(data.content)));
@@ -119,97 +146,95 @@
             document.getElementById('currentFileName').innerText = path;
             currentFilePath = path;
             currentFileSha = sha;
+            isDirty = false;
+            updateStatus('saved', 'Up to date');
         }
 
-        // 3. Save / Add File
         async function saveCurrentFile() {
-            if (!currentFilePath) {
-                currentFilePath = prompt("Enter file name (e.g., notes.html):");
-                if (!currentFilePath) return;
-            }
+            if (!currentFilePath || !isDirty && currentFileSha) return;
 
+            updateStatus('syncing', 'Auto-saving...');
             const content = b64EncodeUnicode(document.getElementById('editor').innerHTML);
-            const body = {
-                message: `Update ${currentFilePath}`,
-                content: content,
-                sha: currentFileSha
-            };
+            
+            try {
+                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentFilePath}`, {
+                    method: 'PUT',
+                    headers: getHeaders(),
+                    body: JSON.stringify({
+                        message: `CloudDrive Save: ${currentFilePath}`,
+                        content: content,
+                        sha: currentFileSha || undefined
+                    })
+                });
 
-            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentFilePath}`, {
-                method: 'PUT',
-                headers: getHeaders(),
-                body: JSON.stringify(body)
-            });
-
-            if (res.ok) {
-                alert('Saved successfully!');
-                syncFiles();
+                if (res.ok) {
+                    const data = await res.json();
+                    currentFileSha = data.content.sha;
+                    isDirty = false;
+                    updateStatus('saved', 'Saved at ' + new Date().toLocaleTimeString());
+                    if (!currentFileSha) syncFiles(); // Refresh list if it's a new file
+                }
+            } catch (e) {
+                updateStatus('unsaved', 'Save failed');
             }
         }
 
-        async function createNewFile() {
-            currentFilePath = '';
-            currentFileSha = '';
-            document.getElementById('editor').innerHTML = '';
-            document.getElementById('currentFileName').innerText = 'New File (unsaved)';
+        // 3. Auto-Save Logic (Every 10 Seconds)
+        document.getElementById('editor').addEventListener('input', () => {
+            if (!isDirty) {
+                isDirty = true;
+                updateStatus('unsaved', 'Unsaved changes');
+            }
+        });
+
+        setInterval(() => {
+            if (isDirty) saveCurrentFile();
+        }, 10000);
+
+        // Status UI Helper
+        function updateStatus(type, text) {
+            const dot = document.querySelector('.status-dot');
+            const label = document.getElementById('saveStatus');
+            dot.className = `status-dot status-${type}`;
+            label.childNodes[1].textContent = ` ${text}`;
+        }
+
+        // Editor Tools
+        function exec(command) { document.execCommand(command, false, null); }
+
+        function insertTable() {
+            let table = `<table border="1" style="width:100%; border-collapse: collapse; margin: 1rem 0;"><tr><td style="border:1px solid #ddd; padding:8px;">Cell</td><td style="border:1px solid #ddd; padding:8px;">Cell</td></tr></table><p></p>`;
+            document.execCommand('insertHTML', false, table);
+        }
+
+        // Image Paste
+        document.getElementById('editor').addEventListener('paste', (e) => {
+            const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+            for (let item of items) {
+                if (item.kind === 'file') {
+                    const reader = new FileReader();
+                    reader.onload = (ev) => {
+                        const img = `<img src="${ev.target.result}" style="max-width:100%;" />`;
+                        document.execCommand('insertHTML', false, img);
+                        isDirty = true;
+                    };
+                    reader.readAsDataURL(item.getAsFile());
+                }
+            }
+        });
+
+        function b64EncodeUnicode(str) {
+            return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, (match, p1) => String.fromCharCode('0x' + p1)));
         }
 
         async function deleteFile(path, sha) {
-            if (!confirm(`Delete ${path}?`)) return;
+            if (!confirm(`Permanently delete ${path}?`)) return;
             await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, {
                 method: 'DELETE',
                 headers: getHeaders(),
                 body: JSON.stringify({ message: `Delete ${path}`, sha: sha })
             });
             syncFiles();
-        }
-
-        async function renameFile(path, sha) {
-            const newName = prompt("New file name:", path);
-            if (!newName || newName === path) return;
-            
-            // In GitHub API, rename = Get + Put + Delete. For simplicity here:
-            alert("Rename: The editor will save this as a new file. Please delete the old one manually.");
-            currentFilePath = newName;
-            currentFileSha = ''; 
-            saveCurrentFile();
-        }
-
-        // Rich Text Features
-        function exec(command) { document.execCommand(command, false, null); }
-
-        function insertTable() {
-            const rows = prompt("Rows:", 2);
-            const cols = prompt("Cols:", 2);
-            let table = `<table border="1" style="width:100%; border-collapse: collapse; margin: 10px 0;">`;
-            for(let i=0; i<rows; i++) {
-                table += `<tr>`;
-                for(let j=0; j<cols; j++) table += `<td style="border: 1px solid #ccc; padding: 8px;">Cell</td>`;
-                table += `</tr>`;
-            }
-            table += `</table><p></p>`;
-            document.execCommand('insertHTML', false, table);
-        }
-
-        // Image Handling (Paste)
-        document.getElementById('editor').addEventListener('paste', (e) => {
-            const items = (e.clipboardData || e.originalEvent.clipboardData).items;
-            for (let item of items) {
-                if (item.kind === 'file' && item.type.startsWith('image/')) {
-                    const blob = item.getAsFile();
-                    const reader = new FileReader();
-                    reader.onload = (event) => {
-                        const img = `<img src="${event.target.result}" style="max-width:100%; height:auto;" />`;
-                        document.execCommand('insertHTML', false, img);
-                    };
-                    reader.readAsDataURL(blob);
-                }
-            }
-        });
-
-        // Unicode Safe Base64
-        function b64EncodeUnicode(str) {
-            return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, (match, p1) => String.fromCharCode('0x' + p1)));
         }
     </script>
 </body>
