@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Drive</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        :root { --primary: #0969da; --success: #2ea44f; --danger: #cf222e; --gh-dark: #24292f; --select-bg: #e7f3ff; --select-border: #0969da; }
+        body { font-family: -apple-system, sans-serif; margin: 0; background: #f6f8fa; overflow: hidden; user-select: none; }
+        #header { background: var(--gh-dark); color: white; padding: 8px 12px; display: flex; gap: 10px; align-items: center; height: 45px; box-sizing: border-box; z-index: 300; position: relative; }
+        #header input { background: #333; border: 1px solid #444; color: white; padding: 5px; border-radius: 4px; width: 80px; flex-grow: 1; }
+        #toolbar { background: #fff; border-bottom: 1px solid #d0d7de; padding: 8px; display: flex; gap: 5px; align-items: center; overflow-x: auto; position: relative; z-index: 10; flex-wrap: nowrap; height: 75px; }
+        .btn { padding: 4px 8px; border: 1px solid #d0d7de; border-radius: 6px; cursor: pointer; background: #f6f8fa; font-size: 11px; font-weight: 600; white-space: nowrap; }
+        .btn:active { opacity: 0.7; }
+        .btn-group { display: flex; gap: 3px; border-right: 1px solid #ddd; padding-right: 8px; margin-right: 5px; flex-shrink: 0; flex-direction: column; height: 100%; justify-content: center; }
+        .group-row { display: flex; gap: 3px; align-items: center; }
+        .group-label { font-size: 10px; color: #888; margin-bottom: 2px; font-weight: bold; text-transform: uppercase; }
+        #sidebar { position: fixed; left: 0; top: 0; width: 260px; height: 100%; background: white; transform: translateX(-100%); transition: 0.3s; z-index: 1000; box-shadow: 5px 0 15px rgba(0,0,0,0.1); }
+        #sidebar.open { transform: translateX(0); }
+        #sidebar-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.3); z-index: 999; display: none; }
+        #tab-bar { background: #f6f8fa; display: flex; border-bottom: 1px solid #d0d7de; height: 35px; }
+        .tab { padding: 8px 15px; border-right: 1px solid #d0d7de; cursor: pointer; font-size: 11px; background: #eaeef2; }
+        .tab.active { background: #fff; border-bottom: 2px solid var(--primary); font-weight: bold; }
+        #editor-container { padding: 20px; overflow: auto; height: calc(100vh - 155px); background: #eee; }
+        table { border-collapse: collapse; background: white; table-layout: fixed; transform-origin: 0 0; }
+        td, th { border: 1px solid #d0d7de; padding: 0; font-size: 14px; outline: none; box-sizing: border-box; overflow: hidden; position: relative; vertical-align: top; }
+        /* 內部容器用於控制高度裁切 */
+        .cell-editor { width: 100%; height: 100%; padding: 4px; box-sizing: border-box; overflow: hidden; outline: none; }
+        .cell-editor.wrap-text { white-space: pre-wrap; word-break: break-all; }
+        .cell-editor.line-text { white-space: pre; text-overflow: ellipsis; }
+        th { background: #f6f8fa; font-size: 11px; color: #57606a; text-align: center; padding: 4px; }
+        td.selected { background: var(--select-bg) !important; outline: 1px solid var(--select-border); z-index: 2; }
+        #import-modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; border-radius: 8px; padding: 20px; z-index: 2000; box-shadow: 0 5px 30px rgba(0,0,0,0.3); display: none; width: 400px; }
+        #import-modal textarea { width: 100%; height: 200px; margin: 10px 0; }
+        .zoom-display { font-size: 11px; font-weight: bold; color: var(--primary); min-width: 35px; text-align: center; }
+    </style>
+</head>
+<body>
+
+<div id="sidebar-overlay" onclick="toggleSidebar()"></div>
+
+<div id="import-modal">
+    <div style="font-weight:bold;">Excel 貼上助手</div>
+    <textarea id="import-area" placeholder="在此貼上內容..."></textarea>
+    <div style="text-align:right;">
+        <button class="btn" onclick="closeImport()">取消</button>
+        <button class="btn" style="background:var(--primary); color:white;" onclick="processExcelImport()">確認匯入</button>
+    </div>
+</div>
+
+<div id="header">
+    <button class="btn" onclick="toggleSidebar()">📁 檔案列表</button>
+    <input type="password" id="token" placeholder="Token">
+    <button class="btn" style="background:var(--primary); color:white;" onclick="fetchFiles()">Sync</button>
+    <button class="btn" style="background:var(--success); color:white;" onclick="manualSave()">Save</button>
+    <span id="status" style="font-size:11px; margin-left:auto;">Ready</span>
+</div>
+
+<div id="sidebar">
+    <div style="padding:15px; font-weight:bold; border-bottom:1px solid #ddd;">雲端文件 <button onclick="createNewFile()">+</button></div>
+    <div id="file-items"></div>
+</div>
+
+<div id="toolbar">
+    <div class="btn-group">
+        <span class="group-label">歷史</span>
+        <div class="group-row">
+            <button class="btn" onclick="undo()">↩️ Undo</button>
+            <button class="btn" onclick="redo()">↪️ Redo</button>
+        </div>
+    </div>
+
+    <div class="btn-group">
+        <span class="group-label">選定格格式</span>
+        <div class="group-row">
+            <button class="btn" onclick="setTextFormat('wrap')">Wrap (自動換行)</button>
+            <button class="btn" onclick="setTextFormat('line')">Line (單行)</button>
+        </div>
+        <div class="group-row">
+            <button class="btn" onclick="setGlobalFormat('wrap')">全 Wrap</button>
+            <button class="btn" onclick="setGlobalFormat('line')">全 Line</button>
+        </div>
+    </div>
+
+    <div class="btn-group">
+        <span class="group-label">頁面縮放</span>
+        <div class="group-row">
+            <button class="btn" onclick="adjustZoom(-0.1)">➖</button>
+            <span id="zoom-text" class="zoom-display">100%</span>
+            <button class="btn" onclick="adjustZoom(0.1)">➕</button>
+            <button class="btn" onclick="resetZoom()">重設</button>
+        </div>
+    </div>
+
+    <div class="btn-group">
+        <span class="group-label">增刪行列</span>
+        <div class="group-row">
+            <button class="btn" onclick="modifyTable('row', 'before')">行↑</button>
+            <button class="btn" onclick="modifyTable('row', 'after')">行↓</button>
+            <button class="btn" onclick="modifyTable('col', 'before')">←列</button>
+            <button class="btn" onclick="modifyTable('col', 'after')">列→</button>
+        </div>
+        <div class="group-row">
+            <button class="btn" style="color:var(--danger)" onclick="deleteSelected('row')">刪選定行</button>
+            <button class="btn" style="color:var(--danger)" onclick="deleteSelected('col')">刪選定列</button>
+        </div>
+    </div>
+
+    <div class="btn-group">
+        <span class="group-label">寬高調整 (±10%)</span>
+        <div class="group-row">
+            <button class="btn" onclick="resize('selection', 'row', 1.1)">選定高+</button>
+            <button class="btn" onclick="resize('selection', 'row', 0.9)">選定高-</button>
+            <button class="btn" onclick="resize('all', 'row', 1.1)">全高+</button>
+            <button class="btn" onclick="resize('all', 'row', 0.9)">全高-</button>
+        </div>
+        <div class="group-row">
+            <button class="btn" onclick="resize('selection', 'col', 1.1)">選定寬+</button>
+            <button class="btn" onclick="resize('selection', 'col', 0.9)">選定寬-</button>
+            <button class="btn" onclick="resize('all', 'col', 1.1)">全寬+</button>
+            <button class="btn" onclick="resize('all', 'col', 0.9)">全寬-</button>
+        </div>
+    </div>
+
+    <div class="btn-group" style="border:none;">
+        <span class="group-label">工具</span>
+        <div class="group-row">
+            <button class="btn" onclick="openImport()">📋 匯入</button>
+            <button class="btn" onclick="exportToExcel()">📥 匯出</button>
+            <button class="btn" onclick="clearSelectedCells()">🧹 清空</button>
+        </div>
+    </div>
+
+    <div class="btn-group" style="border:none;">
+      <span class="group-label">其他</span>
+      <div class="group-row">
+          <button class="btn" onclick="window.location.href='https://patrickwoolf.github.io/my-online-drive/text.html'">📝 文件編輯器</button>
+      </div>
+    </div>
+</div>
+
+<div id="tab-bar"><div class="tab-add" onclick="addNewSheet()" style="padding:8px; cursor:pointer; color:green;">＋</div></div>
+
+<div id="editor-container">
+    <table id="main-table"></table>
+</div>
+
+<script>
+    const REPO = "patrickwoolf/my-online-drive";
+    let workbook = { "Sheet1": { data: [["","",""]], rowH: [35], colW: [100,100,100], format: "wrap", cellStyles: {} } };
+    let activeSheet = "Sheet1";
+    let currentFile = null, currentSha = null, lastSavedData = "";
+    let undoStack = [], redoStack = [], isSelecting = false, startCell = null, endCell = null;
+    let currentZoom = 1.0;
+
+    window.onload = () => {
+        const saved = localStorage.getItem('gh_token');
+        if (saved) { document.getElementById('token').value = saved; fetchFiles(); }
+        initTable();
+        setInterval(autoSave, 30000);
+        document.addEventListener('mouseup', () => { isSelecting = false; });
+    };
+
+    function adjustZoom(delta) {
+        currentZoom = Math.max(0.1, Math.min(4.0, currentZoom + delta));
+        applyZoom();
+    }
+    function resetZoom() {
+        currentZoom = 1.0;
+        applyZoom();
+    }
+    function applyZoom() {
+        document.getElementById('main-table').style.zoom = currentZoom;
+        document.getElementById('zoom-text').innerText = Math.round(currentZoom * 100) + "%";
+    }
+
+    // 文字格式：針對特定選定格
+    function setTextFormat(type) {
+        const selected = document.querySelectorAll('td.selected');
+        if (!selected.length) return alert("請先選取儲存格");
+        
+        pushHistory();
+        const sheet = workbook[activeSheet];
+        if (!sheet.cellStyles) sheet.cellStyles = {};
+
+        selected.forEach(td => {
+            const r = td.dataset.r, c = td.dataset.c;
+            sheet.cellStyles[`${r}-${c}`] = type;
+            const editor = td.querySelector('.cell-editor');
+            if (editor) editor.className = 'cell-editor ' + (type === 'wrap' ? 'wrap-text' : 'line-text');
+        });
+    }
+
+    // 全域格式設定
+    function setGlobalFormat(type) {
+        pushHistory();
+        const sheet = workbook[activeSheet];
+        sheet.format = type;
+        sheet.cellStyles = {}; // 清除個別設定，統一套用全域
+        initTable();
+    }
+
+    function resize(scope, type, factor) {
+        pushHistory();
+        const sheet = workbook[activeSheet];
+        let targets = [];
+        if (scope === 'selection') {
+            const range = getSelectedRange() || (getFocus() ? {rMin: getFocus().r, rMax: getFocus().r, cMin: getFocus().c, cMax: getFocus().c} : null);
+            if (!range) return;
+            if (type === 'row') for(let i=range.rMin; i<=range.rMax; i++) targets.push(i);
+            else for(let i=range.cMin; i<=range.cMax; i++) targets.push(i);
+        } else {
+            if (type === 'row') sheet.data.forEach((_, i) => targets.push(i));
+            else sheet.data[0].forEach((_, i) => targets.push(i));
+        }
+        targets.forEach(idx => {
+            if (type === 'row') sheet.rowH[idx] = Math.max(5, Math.round((sheet.rowH[idx] || 35) * factor));
+            else sheet.colW[idx] = Math.max(24, Math.round((sheet.colW[idx] || 100) * factor));
+        });
+        renderStyles();
+    }
+
+    function pushHistory() {
+        undoStack.push(JSON.stringify(workbook));
+        redoStack = [];
+        if(undoStack.length > 50) undoStack.shift();
+    }
+    function undo() {
+        if(undoStack.length) {
+            redoStack.push(JSON.stringify(workbook));
+            workbook = JSON.parse(undoStack.pop());
+            initTable();
+        }
+    }
+    function redo() {
+        if(redoStack.length) {
+            undoStack.push(JSON.stringify(workbook));
+            workbook = JSON.parse(redoStack.pop());
+            initTable();
+        }
+    }
+
+    function initTable() {
+        const sheet = workbook[activeSheet];
+        const table = document.getElementById('main-table');
+        table.innerHTML = "";
+        const thead = document.createElement('tr');
+        thead.appendChild(document.createElement('th'));
+        for(let i=0; i<sheet.data[0].length; i++) {
+            const th = document.createElement('th'); th.innerText = String.fromCharCode(65 + i);
+            thead.appendChild(th);
+        }
+        table.appendChild(thead);
+        
+        const styles = sheet.cellStyles || {};
+        
+        sheet.data.forEach((rowData, r) => {
+            const tr = document.createElement('tr');
+            const th = document.createElement('th'); th.innerText = r + 1;
+            tr.appendChild(th);
+            rowData.forEach((cellData, c) => {
+                const td = document.createElement('td');
+                td.dataset.r = r; td.dataset.c = c;
+                
+                // 內部編輯器容器，用於實現裁切
+                const editor = document.createElement('div');
+                editor.className = 'cell-editor';
+                editor.contentEditable = "true"; 
+                editor.innerText = cellData;
+                
+                // 判斷該格專用格式或工作表預設格式
+                const cellFormat = styles[`${r}-${c}`] || sheet.format || 'wrap';
+                editor.classList.add(cellFormat === 'wrap' ? 'wrap-text' : 'line-text');
+                
+                td.onmousedown = (e) => { isSelecting = true; startCell = {r, c}; endCell = {r, c}; highlightRange(); };
+                td.onmouseover = () => { if(isSelecting) { endCell = {r, c}; highlightRange(); } };
+                
+                editor.onblur = () => { 
+                    if(sheet.data[r][c] !== editor.innerText) { 
+                        pushHistory(); 
+                        sheet.data[r][c] = editor.innerText; 
+                    } 
+                };
+
+                td.appendChild(editor);
+                tr.appendChild(td);
+            });
+            table.appendChild(tr);
+        });
+        renderStyles();
+        renderTabs();
+        applyZoom();
+    }
+
+    function renderStyles() {
+        const sheet = workbook[activeSheet];
+        const tableRows = document.getElementById('main-table').rows;
+        if(!tableRows.length) return;
+        
+        // 設定欄寬
+        for (let j = 0; j < sheet.data[0].length; j++) {
+            const w = (sheet.colW[j] || 100) + 'px';
+            for (let i = 0; i < tableRows.length; i++) {
+                const cell = tableRows[i].cells[j+1];
+                if (cell) { cell.style.width = w; cell.style.minWidth = w; cell.style.maxWidth = w; }
+            }
+        }
+        // 設定列高 (套用到 td 與內部的 editor)
+        for (let i = 0; i < sheet.data.length; i++) {
+            const h = (sheet.rowH[i] || 35) + 'px';
+            const row = tableRows[i+1];
+            if (row) {
+                Array.from(row.cells).forEach((c, idx) => { 
+                    if(idx === 0) { // 序號欄
+                        c.style.height = h;
+                    } else {
+                        c.style.height = h; 
+                        const editor = c.querySelector('.cell-editor');
+                        if(editor) {
+                            editor.style.height = h;
+                            editor.style.maxHeight = h;
+                        }
+                    }
+                });
+            }
+        }
+    }
+
+    function modifyTable(type, action) {
+        pushHistory();
+        const f = getFocus() || {r:0, c:0};
+        let sheet = workbook[activeSheet];
+        if (type === 'row') {
+            const pos = action === 'before' ? f.r : f.r + 1;
+            sheet.data.splice(pos, 0, new Array(sheet.data[0].length).fill(""));
+            sheet.rowH.splice(pos, 0, 35);
+        } else {
+            const pos = action === 'before' ? f.c : f.c + 1;
+            sheet.data.forEach(r => r.splice(pos, 0, ""));
+            sheet.colW.splice(pos, 0, 100);
+        }
+        initTable();
+    }
+
+    function deleteSelected(type) {
+        const range = getSelectedRange();
+        if (!range) return alert("請先選取範圍");
+        pushHistory();
+        let sheet = workbook[activeSheet];
+        if (type === 'row') {
+            sheet.data.splice(range.rMin, range.rMax - range.rMin + 1);
+            sheet.rowH.splice(range.rMin, range.rMax - range.rMin + 1);
+        } else {
+            sheet.data.forEach(r => r.splice(range.cMin, range.cMax - range.cMin + 1));
+            sheet.colW.splice(range.cMin, range.cMax - range.cMin + 1);
+        }
+        initTable();
+    }
+
+    function getSelectedRange() {
+        const selected = document.querySelectorAll('td.selected');
+        if (!selected.length) return null;
+        let rMin = 999, rMax = 0, cMin = 999, cMax = 0;
+        selected.forEach(td => {
+            const r = parseInt(td.dataset.r), c = parseInt(td.dataset.c);
+            rMin = Math.min(rMin, r); rMax = Math.max(rMax, r);
+            cMin = Math.min(cMin, c); cMax = Math.max(cMax, c);
+        });
+        return { rMin, rMax, cMin, cMax };
+    }
+    function getFocus() {
+        const sel = window.getSelection();
+        if (!sel || !sel.rangeCount) return null;
+        let node = sel.anchorNode;
+        while (node && node.tagName !== 'TD') {
+            if (node.classList && node.classList.contains('cell-editor')) break;
+            node = node.parentElement;
+        }
+        if (node && node.classList.contains('cell-editor')) node = node.parentElement;
+        return node ? { r: parseInt(node.dataset.r), c: parseInt(node.dataset.c) } : null;
+    }
+    function highlightRange() {
+        const rMin = Math.min(startCell.r, endCell.r), rMax = Math.max(startCell.r, endCell.r);
+        const cMin = Math.min(startCell.c, endCell.c), cMax = Math.max(startCell.c, endCell.c);
+        document.querySelectorAll('td').forEach(td => {
+            const r = parseInt(td.dataset.r), c = parseInt(td.dataset.c);
+            td.classList.toggle('selected', r >= rMin && r <= rMax && c >= cMin && c <= cMax);
+        });
+    }
+    function clearSelectedCells() {
+        const selected = document.querySelectorAll('td.selected');
+        if (!selected.length) return;
+        pushHistory();
+        selected.forEach(td => { 
+            workbook[activeSheet].data[td.dataset.r][td.dataset.c] = ""; 
+            const editor = td.querySelector('.cell-editor');
+            if(editor) editor.innerText = ""; 
+        });
+    }
+    function openImport() { document.getElementById('import-modal').style.display = 'block'; document.getElementById('import-area').focus(); }
+    function closeImport() { document.getElementById('import-modal').style.display = 'none'; }
+    function processExcelImport() {
+        const text = document.getElementById('import-area').value; if (!text) return closeImport();
+        const f = getFocus() || {r:0, c:0}; pushHistory();
+        const rows = text.split(/\r?\n/).map(row => row.split('\t'));
+        let sheet = workbook[activeSheet];
+        rows.forEach((rowData, rIdx) => {
+            const tr = f.r + rIdx;
+            if (tr >= sheet.data.length) { sheet.data.push(new Array(sheet.data[0].length).fill("")); sheet.rowH.push(35); }
+            rowData.forEach((val, cIdx) => {
+                const tc = f.c + cIdx;
+                if (tc >= sheet.data[0].length) { sheet.data.forEach(r => r.push("")); sheet.colW.push(100); }
+                sheet.data[tr][tc] = val;
+            });
+        });
+        initTable(); closeImport();
+    }
+    function exportToExcel() { const wb = XLSX.utils.book_new(); Object.keys(workbook).forEach(name => XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(workbook[name].data), name)); XLSX.writeFile(wb, currentFile ? currentFile.replace('.json', '.xlsx') : 'export.xlsx'); }
+    function toggleSidebar() { const open = document.getElementById('sidebar').classList.toggle('open'); document.getElementById('sidebar-overlay').style.display = open ? 'block' : 'none'; }
+    function renderTabs() { const bar = document.getElementById('tab-bar'); bar.querySelectorAll('.tab').forEach(t => t.remove()); Object.keys(workbook).forEach(name => { const div = document.createElement('div'); div.className = `tab ${name === activeSheet ? 'active' : ''}`; div.innerText = name; div.onclick = () => { activeSheet = name; initTable(); }; bar.insertBefore(div, bar.firstChild); }); }
+    async function fetchFiles() { const token = document.getElementById('token').value; if(!token) return; localStorage.setItem('gh_token', token); const res = await fetch(`https://api.github.com/repos/${REPO}/contents/`, { headers: { 'Authorization': `token ${token}` } }); const files = await res.json(); const list = document.getElementById('file-items'); list.innerHTML = ""; files.filter(f => f.name.endsWith('.json')).forEach(f => { const d = document.createElement('div'); d.className = "file-item"; d.innerText = f.name; d.onclick = () => loadFile(f.name); list.appendChild(d); }); }
+    async function loadFile(name) { toggleSidebar(); document.getElementById('status').innerText = "Loading..."; const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${name}`, { headers: { 'Authorization': `token ${document.getElementById('token').value}` } }); const json = await res.json(); currentFile = name; currentSha = json.sha; const content = JSON.parse(pako.ungzip(new Uint8Array(atob(json.content).split('').map(c => c.charCodeAt(0))), {to:'string'})); workbook = content; activeSheet = Object.keys(workbook)[0]; lastSavedData = JSON.stringify(workbook); initTable(); document.getElementById('status').innerText = name; }
+    async function saveToCloud() { const dataStr = JSON.stringify(workbook); const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentFile}`, { method: 'PUT', headers: { 'Authorization': `token ${document.getElementById('token').value}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ message: "AutoSave", content: btoa(String.fromCharCode.apply(null, pako.gzip(dataStr))), sha: currentSha }) }); const json = await res.json(); if(json.content) { currentSha = json.content.sha; lastSavedData = dataStr; } }
+    async function autoSave() { if (currentFile && JSON.stringify(workbook) !== lastSavedData) { await saveToCloud(); document.getElementById('status').innerText = currentFile; } }
+    function manualSave() { if(currentFile) saveToCloud(); }
+    function addNewSheet() { const name = prompt("分頁名稱:"); if (name && !workbook[name]) { pushHistory(); workbook[name] = { data: [["",""]], rowH: [35], colW: [100,100], format: "wrap", cellStyles: {} }; activeSheet = name; initTable(); } }
+    function createNewFile() { let name = prompt("新檔名:"); if (!name) return; if (!name.endsWith('.json')) name += '.json'; currentFile = name; workbook = { "Sheet1": { data: [["",""]], rowH:[35], colW:[100,100], format: "wrap", cellStyles: {} } }; saveToCloud().then(fetchFiles); }
+</script>
+</body>
+</html>
