@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CloudDrive Editor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        #editor { min-height: 400px; border: 1px solid #e2e8f0; padding: 1rem; border-radius: 0.5rem; overflow-y: auto; }
+        #editor:focus { outline: 2px solid #3b82f6; }
+        .file-item:hover .file-actions { display: flex; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-900 font-sans">
+
+    <header class="bg-white border-b p-4 shadow-sm">
+        <div class="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
+            <h1 class="text-xl font-bold flex items-center gap-2">
+                <i data-lucide="hard-drive" class="text-blue-600"></i> My Online Drive
+            </h1>
+            <div class="flex gap-2 w-full md:w-auto">
+                <input type="password" id="ghToken" placeholder="Enter GitHub Fine-grained Token" 
+                       class="border rounded px-3 py-1 text-sm flex-grow md:w-64 focus:ring-2 focus:ring-blue-400 outline-none">
+                <button onclick="syncFiles()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1 rounded text-sm flex items-center gap-2">
+                    <i data-lucide="refresh-cw" size="16"></i> Sync
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto p-4 grid grid-cols-1 md:grid-cols-4 gap-6">
+        
+        <aside class="md:col-span-1 bg-white rounded-lg shadow p-4">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="font-semibold text-slate-600">Files</h2>
+                <button onclick="createNewFile()" class="p-1 hover:bg-slate-100 rounded text-blue-600" title="New File">
+                    <i data-lucide="file-plus" size="20"></i>
+                </button>
+            </div>
+            <div id="fileList" class="space-y-1 text-sm">
+                <p class="text-slate-400 italic">No files loaded...</p>
+            </div>
+        </aside>
+
+        <section class="md:col-span-3 space-y-4">
+            <div class="bg-white rounded-lg shadow p-4">
+                <div class="flex flex-wrap gap-2 mb-4 pb-4 border-b">
+                    <button onclick="exec('bold')" class="p-2 hover:bg-slate-100 rounded" title="Bold"><i data-lucide="bold" size="18"></i></button>
+                    <button onclick="exec('italic')" class="p-2 hover:bg-slate-100 rounded" title="Italic"><i data-lucide="italic" size="18"></i></button>
+                    <button onclick="insertTable()" class="p-2 hover:bg-slate-100 rounded" title="Insert Table"><i data-lucide="table" size="18"></i></button>
+                    <div class="h-6 w-px bg-slate-200 mx-1"></div>
+                    <button onclick="saveCurrentFile()" id="saveBtn" class="bg-green-600 hover:bg-green-700 text-white px-4 py-1 rounded text-sm disabled:opacity-50">
+                        Save Changes
+                    </button>
+                    <span id="currentFileName" class="ml-auto text-sm text-slate-500 self-center"></span>
+                </div>
+
+                <div id="editor" contenteditable="true" class="bg-white"></div>
+                <p class="text-xs text-slate-400 mt-2 italic">Tip: Paste images directly into the editor.</p>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        const REPO = 'patrickwoolf/my-online-drive';
+        let currentFilePath = '';
+        let currentFileSha = '';
+
+        // Initialize Lucide Icons
+        lucide.createIcons();
+
+        // Local Storage for Token
+        const tokenInput = document.getElementById('ghToken');
+        tokenInput.value = localStorage.getItem('gh_token') || '';
+        tokenInput.addEventListener('input', (e) => localStorage.setItem('gh_token', e.target.value));
+
+        // Core API Header Helper
+        const getHeaders = () => ({
+            'Authorization': `token ${tokenInput.value}`,
+            'Accept': 'application/vnd.github.v3+json'
+        });
+
+        // 1. Sync / List Files
+        async function syncFiles() {
+            try {
+                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/`, { headers: getHeaders() });
+                const files = await res.json();
+                
+                const list = document.getElementById('fileList');
+                list.innerHTML = '';
+                
+                files.forEach(file => {
+                    if (file.type === 'dir') return;
+                    const div = document.createElement('div');
+                    div.className = 'file-item group flex justify-between items-center p-2 hover:bg-blue-50 rounded cursor-pointer';
+                    div.innerHTML = `
+                        <span class="truncate flex-grow" onclick="loadFile('${file.path}', '${file.sha}')">${file.name}</span>
+                        <div class="file-actions hidden gap-1">
+                            <button onclick="renameFile('${file.path}', '${file.sha}')" title="Rename"><i data-lucide="edit-3" size="14"></i></button>
+                            <button onclick="deleteFile('${file.path}', '${file.sha}')" class="text-red-500" title="Delete"><i data-lucide="trash-2" size="14"></i></button>
+                        </div>
+                    `;
+                    list.appendChild(div);
+                });
+                lucide.createIcons();
+            } catch (err) {
+                alert('Failed to sync. Check token and repo permissions.');
+            }
+        }
+
+        // 2. Load File Content
+        async function loadFile(path, sha) {
+            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { headers: getHeaders() });
+            const data = await res.json();
+            const content = decodeURIComponent(escape(atob(data.content)));
+            
+            document.getElementById('editor').innerHTML = content;
+            document.getElementById('currentFileName').innerText = path;
+            currentFilePath = path;
+            currentFileSha = sha;
+        }
+
+        // 3. Save / Add File
+        async function saveCurrentFile() {
+            if (!currentFilePath) {
+                currentFilePath = prompt("Enter file name (e.g., notes.html):");
+                if (!currentFilePath) return;
+            }
+
+            const content = b64EncodeUnicode(document.getElementById('editor').innerHTML);
+            const body = {
+                message: `Update ${currentFilePath}`,
+                content: content,
+                sha: currentFileSha
+            };
+
+            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentFilePath}`, {
+                method: 'PUT',
+                headers: getHeaders(),
+                body: JSON.stringify(body)
+            });
+
+            if (res.ok) {
+                alert('Saved successfully!');
+                syncFiles();
+            }
+        }
+
+        async function createNewFile() {
+            currentFilePath = '';
+            currentFileSha = '';
+            document.getElementById('editor').innerHTML = '';
+            document.getElementById('currentFileName').innerText = 'New File (unsaved)';
+        }
+
+        async function deleteFile(path, sha) {
+            if (!confirm(`Delete ${path}?`)) return;
+            await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, {
+                method: 'DELETE',
+                headers: getHeaders(),
+                body: JSON.stringify({ message: `Delete ${path}`, sha: sha })
+            });
+            syncFiles();
+        }
+
+        async function renameFile(path, sha) {
+            const newName = prompt("New file name:", path);
+            if (!newName || newName === path) return;
+            
+            // In GitHub API, rename = Get + Put + Delete. For simplicity here:
+            alert("Rename: The editor will save this as a new file. Please delete the old one manually.");
+            currentFilePath = newName;
+            currentFileSha = ''; 
+            saveCurrentFile();
+        }
+
+        // Rich Text Features
+        function exec(command) { document.execCommand(command, false, null); }
+
+        function insertTable() {
+            const rows = prompt("Rows:", 2);
+            const cols = prompt("Cols:", 2);
+            let table = `<table border="1" style="width:100%; border-collapse: collapse; margin: 10px 0;">`;
+            for(let i=0; i<rows; i++) {
+                table += `<tr>`;
+                for(let j=0; j<cols; j++) table += `<td style="border: 1px solid #ccc; padding: 8px;">Cell</td>`;
+                table += `</tr>`;
+            }
+            table += `</table><p></p>`;
+            document.execCommand('insertHTML', false, table);
+        }
+
+        // Image Handling (Paste)
+        document.getElementById('editor').addEventListener('paste', (e) => {
+            const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+            for (let item of items) {
+                if (item.kind === 'file' && item.type.startsWith('image/')) {
+                    const blob = item.getAsFile();
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                        const img = `<img src="${event.target.result}" style="max-width:100%; height:auto;" />`;
+                        document.execCommand('insertHTML', false, img);
+                    };
+                    reader.readAsDataURL(blob);
+                }
+            }
+        });
+
+        // Unicode Safe Base64
+        function b64EncodeUnicode(str) {
+            return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, (match, p1) => String.fromCharCode('0x' + p1)));
+        }
+    </script>
+</body>
+</html>
