@@ -7,66 +7,76 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
-        #editor { min-height: calc(100vh - 180px); padding: 2rem; overflow-y: auto; outline: none; }
-        .sidebar-transition { transition: all 0.3s ease-in-out; }
-        .file-item:hover .file-actions { display: flex; }
-        .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
-        .status-saved { background-color: #22c55e; }
-        .status-unsaved { background-color: #ef4444; }
-        .status-syncing { background-color: #3b82f6; animation: pulse 1s infinite; }
-        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
+        #editor { min-height: calc(100vh - 160px); padding: 1.5rem; overflow-y: auto; outline: none; transition: all 0.2s; }
+        /* Sidebar logic */
+        #sidebar { transition: transform 0.3s ease; width: 280px; }
+        .sidebar-hidden { transform: translateX(-100%); }
+        /* Mobile Overlay */
+        #overlay { display: none; }
+        @media (max-width: 768px) {
+            #sidebar { position: fixed; height: 100vh; z-index: 50; }
+            .sidebar-open #overlay { display: block; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 40; }
+        }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+        .status-saved { background: #22c55e; }
+        .status-unsaved { background: #ef4444; }
+        .status-syncing { background: #3b82f6; animation: pulse 1s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900 font-sans h-screen flex flex-col overflow-hidden">
 
-    <header class="bg-white border-b p-3 shadow-sm z-20">
-        <div class="flex justify-between items-center px-4">
-            <div class="flex items-center gap-4">
-                <button onclick="toggleSidebar()" class="p-2 hover:bg-slate-100 rounded-md">
-                    <i data-lucide="menu" size="20"></i>
-                </button>
-                <h1 class="text-lg font-bold flex items-center gap-2">
-                    <i data-lucide="cloud-cog" class="text-blue-600"></i> CloudDrive
-                </h1>
-            </div>
-            
-            <div class="flex items-center gap-3">
-                <div id="saveStatus" class="text-xs text-slate-400 flex items-center mr-4">
-                    <span class="status-dot status-saved"></span> Up to date
+    <div id="overlay" onclick="toggleSidebar()"></div>
+
+    <header class="bg-white border-b p-2 shadow-sm z-20">
+        <div class="flex flex-col gap-2">
+            <div class="flex justify-between items-center px-2">
+                <div class="flex items-center gap-2">
+                    <button onclick="toggleSidebar()" class="p-2 hover:bg-slate-100 rounded-md">
+                        <i data-lucide="menu" size="20"></i>
+                    </button>
+                    <h1 class="text-md font-bold text-blue-600 flex items-center gap-1">
+                        <i data-lucide="cloud-cog" size="18"></i> <span class="hidden sm:inline">CloudDrive</span>
+                    </h1>
                 </div>
+                <div class="flex items-center gap-2">
+                    <div id="saveStatus" class="text-[10px] uppercase font-bold text-slate-400 flex items-center mr-2">
+                        <span class="status-dot status-saved mr-1"></span> <span>Synced</span>
+                    </div>
+                    <button onclick="syncFiles()" class="bg-blue-600 text-white p-1.5 rounded-md transition-colors">
+                        <i data-lucide="refresh-cw" size="16"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="px-2 pb-1">
                 <input type="password" id="ghToken" placeholder="GitHub Token" 
-                       class="border rounded-md px-3 py-1 text-sm w-48 focus:ring-2 focus:ring-blue-400 outline-none bg-slate-50">
-                <button onclick="syncFiles()" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-md text-sm flex items-center gap-2 transition-colors">
-                    <i data-lucide="refresh-cw" size="14"></i> Sync
-                </button>
+                       class="w-full border rounded-md px-3 py-1.5 text-xs focus:ring-2 focus:ring-blue-400 outline-none bg-slate-50">
             </div>
         </div>
     </header>
 
-    <div class="flex flex-1 overflow-hidden relative">
-        <aside id="sidebar" class="sidebar-transition w-72 bg-white border-r flex flex-col absolute md:relative h-full z-10 translate-x-0">
-            <div class="p-4 flex justify-between items-center border-b">
-                <span class="text-sm font-semibold uppercase text-slate-500 tracking-wider">File Explorer</span>
-                <button onclick="createNewFile()" class="p-1.5 hover:bg-blue-50 text-blue-600 rounded-md transition-colors" title="New File">
+    <div class="flex flex-1 overflow-hidden">
+        <aside id="sidebar" class="sidebar-hidden bg-white border-r flex flex-col shadow-xl md:shadow-none">
+            <div class="p-4 flex justify-between items-center border-b bg-slate-50">
+                <span class="text-xs font-bold uppercase text-slate-500">Files</span>
+                <button onclick="createNewFile()" class="p-1.5 text-blue-600 hover:bg-blue-100 rounded-md">
                     <i data-lucide="file-plus" size="18"></i>
                 </button>
             </div>
             <div id="fileList" class="flex-1 overflow-y-auto p-2 space-y-1">
-                <p class="p-4 text-xs text-slate-400 italic">Enter token and click sync...</p>
-            </div>
+                </div>
         </aside>
 
-        <main class="flex-1 flex flex-col bg-white overflow-hidden">
-            <div class="p-2 border-b flex items-center gap-1 bg-slate-50/50">
-                <button onclick="exec('bold')" class="p-2 hover:bg-white hover:shadow-sm rounded" title="Bold"><i data-lucide="bold" size="16"></i></button>
-                <button onclick="exec('italic')" class="p-2 hover:bg-white hover:shadow-sm rounded" title="Italic"><i data-lucide="italic" size="16"></i></button>
-                <button onclick="insertTable()" class="p-2 hover:bg-white hover:shadow-sm rounded" title="Insert Table"><i data-lucide="table" size="16"></i></button>
-                <div class="h-4 w-px bg-slate-300 mx-2"></div>
-                <button onclick="saveCurrentFile()" class="p-2 hover:bg-white hover:shadow-sm rounded text-green-600" title="Manual Save"><i data-lucide="save" size="16"></i></button>
-                <span id="currentFileName" class="ml-4 text-sm font-medium text-slate-600"></span>
+        <main class="flex-1 flex flex-col bg-white overflow-hidden w-full">
+            <div class="p-1 border-b flex items-center gap-1 bg-slate-50/50 overflow-x-auto no-scrollbar">
+                <button onclick="exec('bold')" class="p-2 min-w-[40px] flex justify-center"><i data-lucide="bold" size="16"></i></button>
+                <button onclick="exec('italic')" class="p-2 min-w-[40px] flex justify-center"><i data-lucide="italic" size="16"></i></button>
+                <button onclick="insertTable()" class="p-2 min-w-[40px] flex justify-center"><i data-lucide="table" size="16"></i></button>
+                <div class="h-4 w-px bg-slate-300 mx-1"></div>
+                <span id="currentFileName" class="text-xs font-medium text-slate-500 truncate px-2">No file open</span>
             </div>
 
-            <div id="editor" contenteditable="true" class="prose max-w-none"></div>
+            <div id="editor" contenteditable="true" class="prose max-w-none text-base"></div>
         </main>
     </div>
 
@@ -78,7 +88,7 @@
 
         lucide.createIcons();
 
-        // Token Management
+        // Initialize Token
         const tokenInput = document.getElementById('ghToken');
         tokenInput.value = localStorage.getItem('gh_token') || '';
         tokenInput.addEventListener('input', (e) => localStorage.setItem('gh_token', e.target.value));
@@ -88,18 +98,18 @@
             'Accept': 'application/vnd.github.v3+json'
         });
 
-        // 1. Sidebar Toggle
         function toggleSidebar() {
-            const sb = document.getElementById('sidebar');
-            sb.classList.toggle('-translate-x-full');
-            if (sb.classList.contains('-translate-x-full')) {
-                sb.style.width = '0';
+            const sidebar = document.getElementById('sidebar');
+            const isHidden = sidebar.classList.contains('sidebar-hidden');
+            if (isHidden) {
+                sidebar.classList.remove('sidebar-hidden');
+                document.body.classList.add('sidebar-open');
             } else {
-                sb.style.width = '18rem';
+                sidebar.classList.add('sidebar-hidden');
+                document.body.classList.remove('sidebar-open');
             }
         }
 
-        // 2. File Operations
         async function syncFiles() {
             try {
                 const res = await fetch(`https://api.github.com/repos/${REPO}/contents/`, { headers: getHeaders() });
@@ -110,50 +120,56 @@
                 files.forEach(file => {
                     if (file.type === 'dir') return;
                     const div = document.createElement('div');
-                    div.className = 'file-item group flex justify-between items-center p-2 hover:bg-blue-50 rounded-md cursor-pointer transition-colors';
+                    div.className = 'flex justify-between items-center p-3 hover:bg-blue-50 rounded-md cursor-pointer border-b border-slate-50 sm:border-0';
                     div.innerHTML = `
-                        <div class="flex items-center gap-2 truncate flex-grow" onclick="loadFile('${file.path}', '${file.sha}')">
-                            <i data-lucide="file-text" size="14" class="text-slate-400"></i>
-                            <span class="truncate text-sm text-slate-700">${file.name}</span>
+                        <div class="flex items-center gap-3 truncate flex-grow" onclick="selectFile('${file.path}', '${file.sha}')">
+                            <i data-lucide="file-text" size="16" class="text-blue-400"></i>
+                            <span class="truncate text-sm font-medium text-slate-700">${file.name}</span>
                         </div>
-                        <div class="file-actions hidden gap-1 bg-blue-50 pl-2">
-                            <button onclick="deleteFile('${file.path}', '${file.sha}')" class="text-slate-400 hover:text-red-500 p-1"><i data-lucide="trash-2" size="14"></i></button>
-                        </div>
+                        <button onclick="deleteFile('${file.path}', '${file.sha}')" class="text-slate-300 hover:text-red-500 p-1">
+                            <i data-lucide="trash-2" size="16"></i>
+                        </button>
                     `;
                     list.appendChild(div);
                 });
                 lucide.createIcons();
-            } catch (err) { alert('Sync failed. Check token/repo.'); }
+            } catch (err) { alert('Check your Token and Internet Connection'); }
         }
 
-        async function createNewFile() {
-            const name = prompt("Filename (e.g., index.html):");
-            if (!name) return;
-            currentFilePath = name;
-            currentFileSha = '';
-            document.getElementById('editor').innerHTML = '<p>Start typing...</p>';
-            document.getElementById('currentFileName').innerText = name;
-            await saveCurrentFile(); // Initial save to create file on GitHub
+        async function selectFile(path, sha) {
+            if (window.innerWidth < 768) toggleSidebar();
+            loadFile(path, sha);
         }
 
         async function loadFile(path, sha) {
             updateStatus('syncing', 'Loading...');
-            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { headers: getHeaders() });
-            const data = await res.json();
-            const content = decodeURIComponent(escape(atob(data.content)));
-            
-            document.getElementById('editor').innerHTML = content;
-            document.getElementById('currentFileName').innerText = path;
-            currentFilePath = path;
-            currentFileSha = sha;
-            isDirty = false;
-            updateStatus('saved', 'Up to date');
+            try {
+                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { headers: getHeaders() });
+                const data = await res.json();
+                const content = decodeURIComponent(escape(atob(data.content)));
+                document.getElementById('editor').innerHTML = content;
+                document.getElementById('currentFileName').innerText = path;
+                currentFilePath = path;
+                currentFileSha = sha;
+                isDirty = false;
+                updateStatus('saved', 'Synced');
+            } catch (e) { updateStatus('unsaved', 'Load Failed'); }
+        }
+
+        async function createNewFile() {
+            const name = prompt("New filename:");
+            if (!name) return;
+            currentFilePath = name;
+            currentFileSha = '';
+            document.getElementById('editor').innerHTML = '<p>Start typing...</p>';
+            isDirty = true;
+            await saveCurrentFile();
+            if (window.innerWidth < 768) toggleSidebar();
         }
 
         async function saveCurrentFile() {
-            if (!currentFilePath || !isDirty && currentFileSha) return;
-
-            updateStatus('syncing', 'Auto-saving...');
+            if (!currentFilePath || (!isDirty && currentFileSha)) return;
+            updateStatus('syncing', 'Saving...');
             const content = b64EncodeUnicode(document.getElementById('editor').innerHTML);
             
             try {
@@ -161,7 +177,7 @@
                     method: 'PUT',
                     headers: getHeaders(),
                     body: JSON.stringify({
-                        message: `CloudDrive Save: ${currentFilePath}`,
+                        message: `Auto-save: ${currentFilePath}`,
                         content: content,
                         sha: currentFileSha || undefined
                     })
@@ -171,50 +187,43 @@
                     const data = await res.json();
                     currentFileSha = data.content.sha;
                     isDirty = false;
-                    updateStatus('saved', 'Saved at ' + new Date().toLocaleTimeString());
-                    if (!currentFileSha) syncFiles(); // Refresh list if it's a new file
+                    updateStatus('saved', 'Synced');
+                    syncFiles();
                 }
-            } catch (e) {
-                updateStatus('unsaved', 'Save failed');
-            }
+            } catch (e) { updateStatus('unsaved', 'Error'); }
         }
 
-        // 3. Auto-Save Logic (Every 10 Seconds)
+        // Auto-save logic
         document.getElementById('editor').addEventListener('input', () => {
             if (!isDirty) {
                 isDirty = true;
-                updateStatus('unsaved', 'Unsaved changes');
+                updateStatus('unsaved', 'Unsaved');
             }
         });
 
-        setInterval(() => {
-            if (isDirty) saveCurrentFile();
-        }, 10000);
+        setInterval(() => { if (isDirty) saveCurrentFile(); }, 10000);
 
-        // Status UI Helper
         function updateStatus(type, text) {
             const dot = document.querySelector('.status-dot');
-            const label = document.getElementById('saveStatus');
+            const label = document.querySelector('#saveStatus span:last-child');
             dot.className = `status-dot status-${type}`;
-            label.childNodes[1].textContent = ` ${text}`;
+            label.textContent = text;
         }
 
-        // Editor Tools
         function exec(command) { document.execCommand(command, false, null); }
 
         function insertTable() {
-            let table = `<table border="1" style="width:100%; border-collapse: collapse; margin: 1rem 0;"><tr><td style="border:1px solid #ddd; padding:8px;">Cell</td><td style="border:1px solid #ddd; padding:8px;">Cell</td></tr></table><p></p>`;
+            let table = `<table border="1" style="width:100%; border-collapse: collapse; margin: 10px 0;"><tr><td style="border:1px solid #ddd; padding:8px;">Cell</td><td style="border:1px solid #ddd; padding:8px;">Cell</td></tr></table><p></p>`;
             document.execCommand('insertHTML', false, table);
         }
 
-        // Image Paste
         document.getElementById('editor').addEventListener('paste', (e) => {
             const items = (e.clipboardData || e.originalEvent.clipboardData).items;
             for (let item of items) {
-                if (item.kind === 'file') {
+                if (item.kind === 'file' && item.type.includes('image')) {
                     const reader = new FileReader();
                     reader.onload = (ev) => {
-                        const img = `<img src="${ev.target.result}" style="max-width:100%;" />`;
+                        const img = `<img src="${ev.target.result}" style="max-width:100%; height:auto;" />`;
                         document.execCommand('insertHTML', false, img);
                         isDirty = true;
                     };
@@ -228,7 +237,7 @@
         }
 
         async function deleteFile(path, sha) {
-            if (!confirm(`Permanently delete ${path}?`)) return;
+            if (!confirm(`Delete ${path}?`)) return;
             await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, {
                 method: 'DELETE',
                 headers: getHeaders(),
