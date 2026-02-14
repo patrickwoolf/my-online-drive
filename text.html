@@ -18,15 +18,8 @@
             outline: none; 
             transform-origin: top left;
         }
-        #sidebar { 
-            transition: transform 0.3s ease, margin-left 0.3s ease; 
-            width: 280px; 
-            z-index: 50; 
-        }
-        .sidebar-hidden { 
-            transform: translateX(-100%); 
-            margin-left: -280px; 
-        }
+        #sidebar { transition: transform 0.3s ease, margin-left 0.3s ease; width: 280px; z-index: 50; }
+        .sidebar-hidden { transform: translateX(-100%); margin-left: -280px; }
         #overlay { display: none; }
         @media (max-width: 768px) {
             #sidebar { position: fixed; height: 100vh; margin-left: 0; }
@@ -91,10 +84,15 @@
                 <button onclick="exec('italic')" class="p-2 min-w-[40px]"><i data-lucide="italic" size="16"></i></button>
                 <button onclick="insertTable()" class="p-2 min-w-[40px]"><i data-lucide="table" size="16"></i></button>
                 
+                <button onclick="document.getElementById('fileInput').click()" class="p-2 min-w-[40px] text-blue-600">
+                    <i data-lucide="image-plus" size="16"></i>
+                </button>
+                <input type="file" id="fileInput" class="hidden" accept="image/*" onchange="handleFileSelect(event)">
+
                 <div class="h-4 w-px bg-slate-300 mx-1"></div>
                 <div class="flex items-center bg-slate-200/50 rounded-lg px-1">
                     <button onclick="changeZoom(-0.1)" class="p-2 hover:bg-slate-200 rounded-md"><i data-lucide="zoom-out" size="16"></i></button>
-                    <button onclick="resetZoom()" id="zoomPercent" class="text-[10px] font-bold w-10 text-center hover:text-blue-600">100%</button>
+                    <button onclick="resetZoom()" id="zoomPercent" class="text-[10px] font-bold w-10 text-center">100%</button>
                     <button onclick="changeZoom(0.1)" class="p-2 hover:bg-slate-200 rounded-md"><i data-lucide="zoom-in" size="16"></i></button>
                 </div>
 
@@ -123,22 +121,17 @@
         
         window.addEventListener('DOMContentLoaded', () => {
             if (tokenInput.value) syncFiles();
-            else document.getElementById('fileList').innerHTML = '<div class="text-center py-4 text-slate-400 text-xs">Please enter GitHub Token</div>';
+            else document.getElementById('fileList').innerHTML = '<div class="text-center py-4 text-slate-400 text-xs">Enter Token</div>';
         });
 
-        tokenInput.addEventListener('input', (e) => {
-            localStorage.setItem('gh_token', e.target.value);
-        });
+        tokenInput.addEventListener('input', (e) => localStorage.setItem('gh_token', e.target.value));
 
         const getHeaders = () => ({
             'Authorization': `token ${tokenInput.value}`,
             'Accept': 'application/vnd.github.v3+json'
         });
 
-        function changeZoom(delta) {
-            currentZoom = Math.min(Math.max(0.5, currentZoom + delta), 2.0);
-            applyZoom();
-        }
+        function changeZoom(delta) { currentZoom = Math.min(Math.max(0.5, currentZoom + delta), 2.0); applyZoom(); }
         function resetZoom() { currentZoom = 1.0; applyZoom(); }
         function applyZoom() {
             document.getElementById('editor').style.zoom = currentZoom; 
@@ -146,8 +139,7 @@
         }
 
         function toggleSidebar() {
-            const sidebar = document.getElementById('sidebar');
-            sidebar.classList.toggle('sidebar-hidden');
+            document.getElementById('sidebar').classList.toggle('sidebar-hidden');
             document.body.classList.toggle('sidebar-open');
         }
 
@@ -164,44 +156,39 @@
             updateStatus('syncing', 'Syncing...');
             try {
                 const res = await fetch(`https://api.github.com/repos/${REPO}/contents/`, { headers: getHeaders() });
-                if (!res.ok) throw new Error('Auth Failed');
                 const files = await res.json();
                 const list = document.getElementById('fileList');
                 list.innerHTML = '';
-                
                 files.forEach(file => {
                     if (file.type === 'dir') return;
                     const div = document.createElement('div');
                     div.className = 'flex justify-between items-center p-3 hover:bg-blue-50 rounded-md cursor-pointer group';
-                    div.innerHTML = `
-                        <div class="flex items-center gap-3 truncate flex-grow" onclick="selectFile('${file.path}', '${file.sha}')">
+                    div.innerHTML = `<div class="flex items-center gap-3 truncate flex-grow" onclick="selectFile('${file.path}', '${file.sha}')">
                             <i data-lucide="file-text" size="16" class="text-blue-400"></i>
                             <span class="truncate text-sm font-medium text-slate-700">${file.name}</span>
                         </div>
                         <button onclick="deleteFile('${file.path}', '${file.sha}')" class="text-slate-300 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-opacity">
                             <i data-lucide="trash-2" size="16"></i>
-                        </button>
-                    `;
+                        </button>`;
                     list.appendChild(div);
                 });
                 lucide.createIcons();
                 updateStatus('saved', 'Ready');
-            } catch (err) { 
-                updateStatus('unsaved', 'Token Error');
-            }
+            } catch (err) { updateStatus('unsaved', 'Error'); }
         }
 
-        async function selectFile(path, sha) {
-            closeSidebar();
-            loadFile(path, sha);
-        }
+        async function selectFile(path, sha) { closeSidebar(); loadFile(path, sha); }
 
+        // --- 核心改進：解決 1MB 限制 ---
         async function loadFile(path, sha) {
-            updateStatus('syncing', 'Loading...');
+            updateStatus('syncing', 'Loading Large File...');
             try {
-                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { headers: getHeaders() });
+                // 使用 Git Blobs API 而不是 Contents API
+                const res = await fetch(`https://api.github.com/repos/${REPO}/git/blobs/${sha}`, { headers: getHeaders() });
                 const data = await res.json();
-                const content = decodeURIComponent(escape(atob(data.content)));
+                // 處理 Base64
+                const content = decodeURIComponent(escape(atob(data.content.replace(/\s/g, ''))));
+                
                 document.getElementById('editor').innerHTML = content;
                 document.getElementById('currentFileName').innerText = path;
                 currentFilePath = path;
@@ -209,18 +196,19 @@
                 isDirty = false;
                 updateStatus('saved', 'Synced');
                 document.getElementById('scroll-container').scrollTop = 0;
-            } catch (e) { updateStatus('unsaved', 'Load Failed'); }
+            } catch (e) { 
+                console.error(e);
+                updateStatus('unsaved', 'Load Failed'); 
+            }
         }
 
         async function createNewFile() {
             const name = prompt("New filename:");
             if (!name) return;
             closeSidebar();
-            updateStatus('syncing', 'Creating...');
             currentFilePath = name;
             currentFileSha = '';
-            document.getElementById('editor').innerHTML = '<div>New document</div>';
-            document.getElementById('currentFileName').innerText = name;
+            document.getElementById('editor').innerHTML = '<div>New doc</div>';
             isDirty = true;
             await saveCurrentFile();
         }
@@ -234,11 +222,7 @@
                 const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentFilePath}`, {
                     method: 'PUT',
                     headers: getHeaders(),
-                    body: JSON.stringify({
-                        message: `Update ${currentFilePath}`,
-                        content: content,
-                        sha: currentFileSha || undefined
-                    })
+                    body: JSON.stringify({ message: `Update ${currentFilePath}`, content: content, sha: currentFileSha || undefined })
                 });
                 if (res.ok) {
                     const data = await res.json();
@@ -247,7 +231,56 @@
                     updateStatus('saved', 'Synced');
                     syncFiles();
                 }
-            } catch (e) { updateStatus('unsaved', 'Save Error'); } finally { isSaving = false; }
+            } catch (e) { updateStatus('unsaved', 'Error'); } finally { isSaving = false; }
+        }
+
+        // --- 圖片壓縮邏輯 (供貼上與選擇檔案共用) ---
+        function processAndInsertImage(file) {
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                const img = new Image();
+                img.onload = () => {
+                    const MAX_WIDTH = 1920; 
+                    let width = img.width;
+                    let height = img.height;
+                    if (width > MAX_WIDTH) {
+                        height = Math.round((MAX_WIDTH / width) * height);
+                        width = MAX_WIDTH;
+                    }
+                    const canvas = document.createElement('canvas');
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+                    const resizedBase64 = canvas.toDataURL('image/jpeg', 0.8);
+                    const imgHtml = `<img src="${resizedBase64}" style="max-width:100%; height:auto;" /><p></p>`;
+                    document.execCommand('insertHTML', false, imgHtml);
+                    isDirty = true;
+                    updateStatus('unsaved', 'Unsaved');
+                };
+                img.src = ev.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // 貼上圖片
+        document.getElementById('editor').addEventListener('paste', (e) => {
+            const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+            for (let item of items) {
+                if (item.kind === 'file' && item.type.includes('image')) {
+                    processAndInsertImage(item.getAsFile());
+                    e.preventDefault();
+                }
+            }
+        });
+
+        // 選擇本地檔案
+        function handleFileSelect(e) {
+            const file = e.target.files[0];
+            if (file) {
+                processAndInsertImage(file);
+                e.target.value = ''; // 清空 input 以便下次選擇
+            }
         }
 
         document.getElementById('editor').addEventListener('input', () => {
@@ -270,51 +303,6 @@
             let table = `<table border="1" style="width:100%; border-collapse: collapse; margin: 10px 0;"><tr><td style="border:1px solid #ddd; padding:8px;">Cell</td><td style="border:1px solid #ddd; padding:8px;">Cell</td></tr></table><p></p>`;
             document.execCommand('insertHTML', false, table);
         }
-
-        // --- 圖片處理與自動縮放邏輯 ---
-        document.getElementById('editor').addEventListener('paste', (e) => {
-            const items = (e.clipboardData || e.originalEvent.clipboardData).items;
-            let hasImage = false;
-            for (let item of items) {
-                if (item.kind === 'file' && item.type.includes('image')) {
-                    hasImage = true;
-                    const blob = item.getAsFile();
-                    const reader = new FileReader();
-                    
-                    reader.onload = (ev) => {
-                        const img = new Image();
-                        img.onload = () => {
-                            // 設定最大寬度 (1080p 為 1920, 720p 為 1280)
-                            const MAX_WIDTH = 1920; 
-                            let width = img.width;
-                            let height = img.height;
-
-                            // 如果超過 2K 或設定的 MAX_WIDTH，進行縮放
-                            if (width > MAX_WIDTH) {
-                                height = Math.round((MAX_WIDTH / width) * height);
-                                width = MAX_WIDTH;
-                            }
-
-                            const canvas = document.createElement('canvas');
-                            canvas.width = width;
-                            canvas.height = height;
-                            const ctx = canvas.getContext('2d');
-                            ctx.drawImage(img, 0, 0, width, height);
-
-                            // 輸出壓縮後的 base64 (0.8 代表 80% 品質，可平衡清晰度與大小)
-                            const resizedBase64 = canvas.toDataURL('image/jpeg', 0.8);
-                            const imgHtml = `<img src="${resizedBase64}" style="max-width:100%; height:auto;" />`;
-                            document.execCommand('insertHTML', false, imgHtml);
-                            isDirty = true;
-                            updateStatus('unsaved', 'Unsaved');
-                        };
-                        img.src = ev.target.result;
-                    };
-                    reader.readAsDataURL(blob);
-                }
-            }
-            if (hasImage) e.preventDefault();
-        });
 
         function b64EncodeUnicode(str) {
             return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, (match, p1) => String.fromCharCode('0x' + p1)));
