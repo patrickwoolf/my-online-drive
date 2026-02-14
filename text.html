@@ -7,7 +7,6 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
-        /* Mobile Scroll Fixes */
         #scroll-container { 
             height: calc(100vh - 160px); 
             overflow-y: auto; 
@@ -15,14 +14,12 @@
         }
         #editor { 
             min-height: 100%; 
-            padding: 1.5rem 1.5rem 15rem 1.5rem; /* Large bottom padding for mobile keyboard */
+            padding: 1.5rem 1.5rem 15rem 1.5rem; 
             outline: none; 
-            transform-origin: top left; /* 確保縮放時從左上角開始 */
+            transform-origin: top left;
         }
-        /* Sidebar logic */
         #sidebar { transition: transform 0.3s ease; width: 280px; z-index: 50; }
         .sidebar-hidden { transform: translateX(-100%); }
-        
         #overlay { display: none; }
         @media (max-width: 768px) {
             #sidebar { position: fixed; height: 100vh; }
@@ -75,7 +72,9 @@
                     <i data-lucide="file-plus" size="18"></i>
                 </button>
             </div>
-            <div id="fileList" class="flex-1 overflow-y-auto p-2 space-y-1"></div>
+            <div id="fileList" class="flex-1 overflow-y-auto p-2 space-y-1">
+                <div class="text-center py-4 text-slate-400 text-xs">Loading...</div>
+            </div>
         </aside>
 
         <main class="flex-1 flex flex-col bg-white overflow-hidden w-full">
@@ -85,10 +84,9 @@
                 <button onclick="insertTable()" class="p-2 min-w-[40px]"><i data-lucide="table" size="16"></i></button>
                 
                 <div class="h-4 w-px bg-slate-300 mx-1"></div>
-                
                 <div class="flex items-center bg-slate-200/50 rounded-lg px-1">
                     <button onclick="changeZoom(-0.1)" class="p-2 hover:bg-slate-200 rounded-md"><i data-lucide="zoom-out" size="16"></i></button>
-                    <button onclick="resetZoom()" id="zoomPercent" class="text-[10px] font-bold w-10 text-center hover:text-blue-600">100%</button>
+                    <button onclick="resetZoom()" id="zoomPercent" class="text-[10px] font-bold w-10 text-center">100%</button>
                     <button onclick="changeZoom(0.1)" class="p-2 hover:bg-slate-200 rounded-md"><i data-lucide="zoom-in" size="16"></i></button>
                 </div>
 
@@ -107,15 +105,21 @@
         let currentFilePath = '';
         let currentFileSha = '';
         let isDirty = false;
-        let currentZoom = 1.0; // 初始縮放比例
+        let isSaving = false;
+        let currentZoom = 1.0;
 
         lucide.createIcons();
 
         const tokenInput = document.getElementById('ghToken');
         tokenInput.value = localStorage.getItem('gh_token') || '';
         
+        // 頁面加載立刻顯示 List
         window.addEventListener('DOMContentLoaded', () => {
-            if (tokenInput.value) syncFiles();
+            if (tokenInput.value) {
+                syncFiles();
+            } else {
+                document.getElementById('fileList').innerHTML = '<div class="text-center py-4 text-slate-400 text-xs">Please enter GitHub Token</div>';
+            }
         });
 
         tokenInput.addEventListener('input', (e) => {
@@ -127,36 +131,20 @@
             'Accept': 'application/vnd.github.v3+json'
         });
 
-        // 縮放控制函數
         function changeZoom(delta) {
-            currentZoom = Math.min(Math.max(0.5, currentZoom + delta), 2.0); // 限制 50% ~ 200%
+            currentZoom = Math.min(Math.max(0.5, currentZoom + delta), 2.0);
             applyZoom();
         }
-
-        function resetZoom() {
-            currentZoom = 1.0;
-            applyZoom();
-        }
-
+        function resetZoom() { currentZoom = 1.0; applyZoom(); }
         function applyZoom() {
-            const editor = document.getElementById('editor');
-            const zoomText = document.getElementById('zoomPercent');
-            editor.style.zoom = currentZoom; 
-            // 如果瀏覽器不支持 zoom (如 Firefox)，可以使用 transform: scale() 但需要處理容器高度
-            // editor.style.transform = `scale(${currentZoom})`; 
-            zoomText.innerText = Math.round(currentZoom * 100) + '%';
+            document.getElementById('editor').style.zoom = currentZoom; 
+            document.getElementById('zoomPercent').innerText = Math.round(currentZoom * 100) + '%';
         }
 
         function toggleSidebar() {
             const sidebar = document.getElementById('sidebar');
-            const isHidden = sidebar.classList.contains('sidebar-hidden');
-            if (isHidden) {
-                sidebar.classList.remove('sidebar-hidden');
-                document.body.classList.add('sidebar-open');
-            } else {
-                sidebar.classList.add('sidebar-hidden');
-                document.body.classList.remove('sidebar-open');
-            }
+            sidebar.classList.toggle('sidebar-hidden');
+            document.body.classList.toggle('sidebar-open');
         }
 
         async function syncFiles() {
@@ -164,6 +152,7 @@
             updateStatus('syncing', 'Syncing...');
             try {
                 const res = await fetch(`https://api.github.com/repos/${REPO}/contents/`, { headers: getHeaders() });
+                if (!res.ok) throw new Error('Auth Failed');
                 const files = await res.json();
                 const list = document.getElementById('fileList');
                 list.innerHTML = '';
@@ -171,13 +160,13 @@
                 files.forEach(file => {
                     if (file.type === 'dir') return;
                     const div = document.createElement('div');
-                    div.className = 'flex justify-between items-center p-3 hover:bg-blue-50 rounded-md cursor-pointer';
+                    div.className = 'flex justify-between items-center p-3 hover:bg-blue-50 rounded-md cursor-pointer group';
                     div.innerHTML = `
                         <div class="flex items-center gap-3 truncate flex-grow" onclick="selectFile('${file.path}', '${file.sha}')">
                             <i data-lucide="file-text" size="16" class="text-blue-400"></i>
                             <span class="truncate text-sm font-medium text-slate-700">${file.name}</span>
                         </div>
-                        <button onclick="deleteFile('${file.path}', '${file.sha}')" class="text-slate-300 hover:text-red-500 p-1">
+                        <button onclick="deleteFile('${file.path}', '${file.sha}')" class="text-slate-300 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-opacity">
                             <i data-lucide="trash-2" size="16"></i>
                         </button>
                     `;
@@ -185,7 +174,10 @@
                 });
                 lucide.createIcons();
                 updateStatus('saved', 'Ready');
-            } catch (err) { updateStatus('unsaved', 'Sync Error'); }
+            } catch (err) { 
+                updateStatus('unsaved', 'Token Error');
+                document.getElementById('fileList').innerHTML = '<div class="text-center py-4 text-red-400 text-xs">Invalid Token or Repo</div>';
+            }
         }
 
         async function selectFile(path, sha) {
@@ -210,27 +202,33 @@
         }
 
         async function createNewFile() {
-            const name = prompt("New filename (e.g. todo.html):");
+            const name = prompt("New filename (e.g. note.html):");
             if (!name) return;
+            
+            updateStatus('syncing', 'Creating...');
             currentFilePath = name;
             currentFileSha = '';
-            document.getElementById('editor').innerHTML = '<p>Start typing...</p>';
+            document.getElementById('editor').innerHTML = '<div>New document</div>';
+            document.getElementById('currentFileName').innerText = name;
+            
+            // 建立檔案時強制同步一次到 GitHub 以獲取新 SHA
             isDirty = true;
             await saveCurrentFile();
             if (window.innerWidth < 768) toggleSidebar();
         }
 
         async function saveCurrentFile() {
-            if (!currentFilePath || (!isDirty && currentFileSha)) return;
+            if (!currentFilePath || !isDirty || isSaving) return;
+            isSaving = true;
             updateStatus('syncing', 'Saving...');
-            const content = b64EncodeUnicode(document.getElementById('editor').innerHTML);
             
+            const content = b64EncodeUnicode(document.getElementById('editor').innerHTML);
             try {
                 const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentFilePath}`, {
                     method: 'PUT',
                     headers: getHeaders(),
                     body: JSON.stringify({
-                        message: `CloudDrive: ${currentFilePath}`,
+                        message: `Update ${currentFilePath}`,
                         content: content,
                         sha: currentFileSha || undefined
                     })
@@ -241,9 +239,15 @@
                     currentFileSha = data.content.sha;
                     isDirty = false;
                     updateStatus('saved', 'Synced');
-                    syncFiles();
+                    syncFiles(); // 更新列表顯示新檔案
+                } else {
+                    throw new Error('Save failed');
                 }
-            } catch (e) { updateStatus('unsaved', 'Error'); }
+            } catch (e) { 
+                updateStatus('unsaved', 'Save Error'); 
+            } finally {
+                isSaving = false;
+            }
         }
 
         document.getElementById('editor').addEventListener('input', () => {
@@ -253,7 +257,8 @@
             }
         });
 
-        setInterval(() => { if (isDirty) saveCurrentFile(); }, 10000);
+        // 縮短自動儲存檢測頻率
+        setInterval(() => { if (isDirty) saveCurrentFile(); }, 5000);
 
         function updateStatus(type, text) {
             const dot = document.querySelector('.status-dot');
@@ -265,17 +270,14 @@
         }
 
         function exec(command) { document.execCommand(command, false, null); }
-
         function insertTable() {
             let table = `<table border="1" style="width:100%; border-collapse: collapse; margin: 10px 0;"><tr><td style="border:1px solid #ddd; padding:8px;">Cell</td><td style="border:1px solid #ddd; padding:8px;">Cell</td></tr></table><p></p>`;
             document.execCommand('insertHTML', false, table);
         }
 
-        // 圖片貼上邏輯
         document.getElementById('editor').addEventListener('paste', (e) => {
             const items = (e.clipboardData || e.originalEvent.clipboardData).items;
             let hasImage = false;
-
             for (let item of items) {
                 if (item.kind === 'file' && item.type.includes('image')) {
                     hasImage = true;
