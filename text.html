@@ -6,6 +6,7 @@
     <title>CloudDrive Editor</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
     <style>
         #scroll-container { 
             height: calc(100vh - 160px); 
@@ -51,7 +52,7 @@
                 </div>
                 <div class="flex items-center gap-2">
                     <div id="saveStatus" class="text-[10px] uppercase font-bold text-slate-400 flex items-center mr-2">
-                        <span class="status-dot status-saved mr-1"></span> <span>Ready</span>
+                        <span class="status-dot status-saved mr-1"></span> <span id="statusText">Ready</span>
                     </div>
                     <button onclick="syncFiles()" class="bg-blue-600 text-white p-1.5 rounded-md">
                         <i data-lucide="refresh-cw" size="16"></i>
@@ -87,7 +88,7 @@
                 <button onclick="document.getElementById('fileInput').click()" class="p-2 min-w-[40px] text-blue-600">
                     <i data-lucide="image-plus" size="16"></i>
                 </button>
-                <input type="file" id="fileInput" class="hidden" accept="image/*" onchange="handleFileSelect(event)">
+                <input type="file" id="fileInput" class="hidden" accept="image/*,.heic,.heif" onchange="handleFileSelect(event)">
 
                 <div class="h-4 w-px bg-slate-300 mx-1"></div>
                 <div class="flex items-center bg-slate-200/50 rounded-lg px-1">
@@ -179,16 +180,12 @@
 
         async function selectFile(path, sha) { closeSidebar(); loadFile(path, sha); }
 
-        // --- 核心改進：解決 1MB 限制 ---
         async function loadFile(path, sha) {
             updateStatus('syncing', 'Loading Large File...');
             try {
-                // 使用 Git Blobs API 而不是 Contents API
                 const res = await fetch(`https://api.github.com/repos/${REPO}/git/blobs/${sha}`, { headers: getHeaders() });
                 const data = await res.json();
-                // 處理 Base64
                 const content = decodeURIComponent(escape(atob(data.content.replace(/\s/g, ''))));
-                
                 document.getElementById('editor').innerHTML = content;
                 document.getElementById('currentFileName').innerText = path;
                 currentFilePath = path;
@@ -196,10 +193,7 @@
                 isDirty = false;
                 updateStatus('saved', 'Synced');
                 document.getElementById('scroll-container').scrollTop = 0;
-            } catch (e) { 
-                console.error(e);
-                updateStatus('unsaved', 'Load Failed'); 
-            }
+            } catch (e) { updateStatus('unsaved', 'Load Failed'); }
         }
 
         async function createNewFile() {
@@ -234,8 +228,25 @@
             } catch (e) { updateStatus('unsaved', 'Error'); } finally { isSaving = false; }
         }
 
-        // --- 圖片壓縮邏輯 (供貼上與選擇檔案共用) ---
-        function processAndInsertImage(file) {
+        // --- 核心改進：HEIC 支援與壓縮 ---
+        async function processAndInsertImage(file) {
+            let targetFile = file;
+
+            // 檢查是否為 HEIC 格式
+            const isHEIC = file.name?.toLowerCase().endsWith('.heic') || file.type === 'image/heic';
+            
+            if (isHEIC) {
+                updateStatus('syncing', 'Converting HEIC...');
+                try {
+                    const blob = await heic2any({ blob: file, toType: "image/jpeg", quality: 0.8 });
+                    targetFile = blob;
+                } catch (err) {
+                    console.error("HEIC conversion failed:", err);
+                    updateStatus('unsaved', 'HEIC Error');
+                    return;
+                }
+            }
+
             const reader = new FileReader();
             reader.onload = (ev) => {
                 const img = new Image();
@@ -260,26 +271,27 @@
                 };
                 img.src = ev.target.result;
             };
-            reader.readAsDataURL(file);
+            reader.readAsDataURL(targetFile);
         }
 
-        // 貼上圖片
         document.getElementById('editor').addEventListener('paste', (e) => {
             const items = (e.clipboardData || e.originalEvent.clipboardData).items;
             for (let item of items) {
-                if (item.kind === 'file' && item.type.includes('image')) {
-                    processAndInsertImage(item.getAsFile());
-                    e.preventDefault();
+                if (item.kind === 'file') {
+                    const file = item.getAsFile();
+                    if (file && (file.type.includes('image') || file.name?.toLowerCase().endsWith('.heic'))) {
+                        processAndInsertImage(file);
+                        e.preventDefault();
+                    }
                 }
             }
         });
 
-        // 選擇本地檔案
         function handleFileSelect(e) {
             const file = e.target.files[0];
             if (file) {
                 processAndInsertImage(file);
-                e.target.value = ''; // 清空 input 以便下次選擇
+                e.target.value = '';
             }
         }
 
@@ -291,7 +303,7 @@
 
         function updateStatus(type, text) {
             const dot = document.querySelector('.status-dot');
-            const label = document.querySelector('#saveStatus span:last-child');
+            const label = document.querySelector('#statusText');
             if(dot && label) {
                 dot.className = `status-dot status-${type}`;
                 label.textContent = text;
