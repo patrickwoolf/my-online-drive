@@ -18,11 +18,22 @@
             outline: none; 
             transform-origin: top left;
         }
-        #sidebar { transition: transform 0.3s ease; width: 280px; z-index: 50; }
-        .sidebar-hidden { transform: translateX(-100%); }
+        /* 初始狀態為顯示 (移除平移)，透過 sidebar-hidden 類別來縮回 */
+        #sidebar { 
+            transition: transform 0.3s ease, margin-left 0.3s ease; 
+            width: 280px; 
+            z-index: 50; 
+        }
+        .sidebar-hidden { 
+            transform: translateX(-100%); 
+            margin-left: -280px; /* 在桌面端縮回時不佔空間 */
+        }
+        
         #overlay { display: none; }
         @media (max-width: 768px) {
-            #sidebar { position: fixed; height: 100vh; }
+            #sidebar { position: fixed; height: 100vh; margin-left: 0; }
+            /* 手機版縮回不需要負 margin，只需位移 */
+            .sidebar-hidden { margin-left: 0; }
             .sidebar-open #overlay { display: block; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 40; }
         }
         .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
@@ -65,7 +76,7 @@
     </header>
 
     <div class="flex flex-1 overflow-hidden">
-        <aside id="sidebar" class="sidebar-hidden bg-white border-r flex flex-col shadow-xl md:shadow-none absolute md:relative h-full">
+        <aside id="sidebar" class="bg-white border-r flex flex-col shadow-xl md:shadow-none absolute md:relative h-full">
             <div class="p-4 flex justify-between items-center border-b bg-slate-50">
                 <span class="text-xs font-bold uppercase text-slate-500">Files</span>
                 <button onclick="createNewFile()" class="p-1.5 text-blue-600 hover:bg-blue-100 rounded-md">
@@ -113,7 +124,6 @@
         const tokenInput = document.getElementById('ghToken');
         tokenInput.value = localStorage.getItem('gh_token') || '';
         
-        // 頁面加載立刻顯示 List
         window.addEventListener('DOMContentLoaded', () => {
             if (tokenInput.value) {
                 syncFiles();
@@ -141,10 +151,20 @@
             document.getElementById('zoomPercent').innerText = Math.round(currentZoom * 100) + '%';
         }
 
+        // 修改後的 Toggle 邏輯
         function toggleSidebar() {
             const sidebar = document.getElementById('sidebar');
             sidebar.classList.toggle('sidebar-hidden');
             document.body.classList.toggle('sidebar-open');
+        }
+
+        // 開啟檔案後自動關閉 Sidebar
+        function closeSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            if (!sidebar.classList.contains('sidebar-hidden')) {
+                sidebar.classList.add('sidebar-hidden');
+                document.body.classList.remove('sidebar-open');
+            }
         }
 
         async function syncFiles() {
@@ -176,12 +196,11 @@
                 updateStatus('saved', 'Ready');
             } catch (err) { 
                 updateStatus('unsaved', 'Token Error');
-                document.getElementById('fileList').innerHTML = '<div class="text-center py-4 text-red-400 text-xs">Invalid Token or Repo</div>';
             }
         }
 
         async function selectFile(path, sha) {
-            if (window.innerWidth < 768) toggleSidebar();
+            closeSidebar(); // 點擊檔案即縮起
             loadFile(path, sha);
         }
 
@@ -202,26 +221,22 @@
         }
 
         async function createNewFile() {
-            const name = prompt("New filename (e.g. note.html):");
+            const name = prompt("New filename:");
             if (!name) return;
-            
+            closeSidebar(); // 建立後也縮起
             updateStatus('syncing', 'Creating...');
             currentFilePath = name;
             currentFileSha = '';
             document.getElementById('editor').innerHTML = '<div>New document</div>';
             document.getElementById('currentFileName').innerText = name;
-            
-            // 建立檔案時強制同步一次到 GitHub 以獲取新 SHA
             isDirty = true;
             await saveCurrentFile();
-            if (window.innerWidth < 768) toggleSidebar();
         }
 
         async function saveCurrentFile() {
             if (!currentFilePath || !isDirty || isSaving) return;
             isSaving = true;
             updateStatus('syncing', 'Saving...');
-            
             const content = b64EncodeUnicode(document.getElementById('editor').innerHTML);
             try {
                 const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentFilePath}`, {
@@ -233,31 +248,20 @@
                         sha: currentFileSha || undefined
                     })
                 });
-
                 if (res.ok) {
                     const data = await res.json();
                     currentFileSha = data.content.sha;
                     isDirty = false;
                     updateStatus('saved', 'Synced');
-                    syncFiles(); // 更新列表顯示新檔案
-                } else {
-                    throw new Error('Save failed');
+                    syncFiles();
                 }
-            } catch (e) { 
-                updateStatus('unsaved', 'Save Error'); 
-            } finally {
-                isSaving = false;
-            }
+            } catch (e) { updateStatus('unsaved', 'Save Error'); } finally { isSaving = false; }
         }
 
         document.getElementById('editor').addEventListener('input', () => {
-            if (!isDirty) {
-                isDirty = true;
-                updateStatus('unsaved', 'Unsaved');
-            }
+            if (!isDirty) { isDirty = true; updateStatus('unsaved', 'Unsaved'); }
         });
 
-        // 縮短自動儲存檢測頻率
         setInterval(() => { if (isDirty) saveCurrentFile(); }, 5000);
 
         function updateStatus(type, text) {
