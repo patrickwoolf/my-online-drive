@@ -218,10 +218,26 @@
             } catch (e) { updateStatus('unsaved', 'Error'); }
         }
 
-        document.getElementById('editor').addEventListener('input', () => {
-            if (!isDirty) {
-                isDirty = true;
-                updateStatus('unsaved', 'Unsaved');
+        document.getElementById('editor').addEventListener('paste', (e) => {
+            const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+            let hasImage = false;
+        
+            for (let item of items) {
+                if (item.kind === 'file' && item.type.includes('image')) {
+                    hasImage = true; // 標記發現圖片
+                    const reader = new FileReader();
+                    reader.onload = (ev) => {
+                        const img = `<img src="${ev.target.result}" style="max-width:100%; height:auto;" />`;
+                        document.execCommand('insertHTML', false, img);
+                        isDirty = true;
+                    };
+                    reader.readAsDataURL(item.getAsFile());
+                }
+            }
+        
+            // 如果處理了圖片，就阻止瀏覽器的預設貼上行為
+            if (hasImage) {
+                e.preventDefault();
             }
         });
 
