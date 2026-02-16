@@ -32,11 +32,19 @@
         .status-unsaved { background: #ef4444; }
         .status-syncing { background: #3b82f6; animation: pulse 1s infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
-        .no-scrollbar::-webkit-scrollbar { display: none; }
         
-        /* 表格樣式優化 */
-        table { border-collapse: collapse; width: 100%; margin: 10px 0; }
-        td { border: 1px solid #ddd; padding: 8px; min-width: 40px; }
+        /* 工具列橫向捲動優化 */
+        .toolbar-scroll {
+            display: flex;
+            overflow-x: auto;
+            white-space: nowrap;
+            -webkit-overflow-scrolling: touch;
+        }
+        .toolbar-scroll::-webkit-scrollbar { display: none; }
+        
+        /* 表格樣式預設 */
+        table { border-collapse: collapse; width: 100%; margin: 10px 0; border: 1px solid #ddd; }
+        td { border: 1px solid #ddd; padding: 8px; min-width: 40px; word-break: break-all; }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900 font-sans h-screen flex flex-col overflow-hidden">
@@ -84,45 +92,55 @@
         </aside>
 
         <main class="flex-1 flex flex-col bg-white overflow-hidden w-full">
-            <div class="p-1 border-b flex items-center gap-1 bg-slate-50/50 overflow-x-auto no-scrollbar">
-                <button onclick="exec('bold')" class="p-2 min-w-[40px]"><i data-lucide="bold" size="16"></i></button>
-                <button onclick="exec('italic')" class="p-2 min-w-[40px]"><i data-lucide="italic" size="16"></i></button>
+            <div class="p-1 border-b bg-slate-50/50 toolbar-scroll items-center gap-1">
+                <button onclick="exec('bold')" class="p-2 min-w-[40px] hover:bg-white rounded"><i data-lucide="bold" size="16"></i></button>
+                <button onclick="exec('italic')" class="p-2 min-w-[40px] hover:bg-white rounded"><i data-lucide="italic" size="16"></i></button>
                 
-                <div class="h-4 w-px bg-slate-300 mx-1"></div>
+                <div class="h-6 w-px bg-slate-300 mx-1"></div>
                 
-                <button onclick="insertTable()" class="p-2 min-w-[40px]" title="插入表格"><i data-lucide="table" size="16"></i></button>
+                <button onclick="insertTable()" class="p-2 min-w-[40px] text-slate-700 hover:bg-white rounded" title="插入表格">
+                    <i data-lucide="table" size="18"></i>
+                </button>
                 
-                <div class="grid grid-cols-2 gap-px bg-slate-300 border border-slate-300 rounded overflow-hidden mx-1">
-                    <button onclick="tableAction('addRowAbove')" class="bg-white p-1 hover:bg-blue-50" title="向上新增列">
-                        <i data-lucide="list-plus" size="14" class="text-blue-600"></i>
+                <div class="grid grid-cols-3 gap-px bg-slate-300 border border-slate-300 rounded overflow-hidden mx-1 shrink-0">
+                    <button onclick="tableAction('addRowAbove')" class="bg-white p-1.5 hover:bg-blue-50" title="向上新增列">
+                        <i data-lucide="arrow-up-to-line" size="14" class="text-blue-600"></i>
                     </button>
-                    <button onclick="tableAction('addRowBelow')" class="bg-white p-1 hover:bg-blue-50" title="向下新增列">
-                        <i data-lucide="list-plus" size="14" class="text-blue-600 rotate-180"></i>
+                    <button onclick="tableAction('addColLeft')" class="bg-white p-1.5 hover:bg-blue-50" title="向左新增欄">
+                        <i data-lucide="arrow-left-to-line" size="14" class="text-blue-600"></i>
                     </button>
-                    <button onclick="tableAction('deleteRow')" class="bg-white p-1 hover:bg-red-50" title="刪除選定列">
+                    <button onclick="tableAction('addColRight')" class="bg-white p-1.5 hover:bg-blue-50" title="向右新增欄">
+                        <i data-lucide="arrow-right-to-line" size="14" class="text-blue-600"></i>
+                    </button>
+                    <button onclick="tableAction('addRowBelow')" class="bg-white p-1.5 hover:bg-blue-50" title="向下新增列">
+                        <i data-lucide="arrow-down-to-line" size="14" class="text-blue-600"></i>
+                    </button>
+                    <button onclick="tableAction('deleteRow')" class="bg-white p-1.5 hover:bg-red-50" title="刪除選定列">
                         <i data-lucide="list-x" size="14" class="text-red-500"></i>
                     </button>
-                    <button onclick="tableAction('deleteColumn')" class="bg-white p-1 hover:bg-red-50" title="刪除選定欄">
+                    <button onclick="tableAction('deleteColumn')" class="bg-white p-1.5 hover:bg-red-50" title="刪除選定欄">
                         <i data-lucide="columns-2" size="14" class="text-red-500"></i>
                     </button>
                 </div>
 
-                <div class="h-4 w-px bg-slate-300 mx-1"></div>
+                <div class="h-6 w-px bg-slate-300 mx-1"></div>
 
-                <button onclick="document.getElementById('fileInput').click()" class="p-2 min-w-[40px] text-blue-600">
-                    <i data-lucide="image-plus" size="16"></i>
+                <button onclick="document.getElementById('fileInput').click()" class="p-2 min-w-[40px] text-blue-600 hover:bg-white rounded">
+                    <i data-lucide="image-plus" size="18"></i>
                 </button>
                 <input type="file" id="fileInput" class="hidden" accept="image/*,.heic,.heif" onchange="handleFileSelect(event)">
 
-                <div class="h-4 w-px bg-slate-300 mx-1"></div>
+                <div class="h-6 w-px bg-slate-300 mx-1"></div>
                 
-                <div class="flex items-center bg-slate-200/50 rounded-lg px-1">
+                <div class="flex items-center bg-slate-200/50 rounded-lg px-1 shrink-0">
                     <button onclick="changeZoom(-0.1)" class="p-2 hover:bg-slate-200 rounded-md"><i data-lucide="zoom-out" size="16"></i></button>
                     <button onclick="resetZoom()" id="zoomPercent" class="text-[10px] font-bold w-10 text-center">100%</button>
                     <button onclick="changeZoom(0.1)" class="p-2 hover:bg-slate-200 rounded-md"><i data-lucide="zoom-in" size="16"></i></button>
                 </div>
 
-                <span id="currentFileName" class="text-xs font-medium text-slate-500 truncate px-2 ml-auto">No file open</span>
+                <div class="ml-auto pr-2 shrink-0">
+                    <span id="currentFileName" class="text-xs font-medium text-slate-400 truncate max-w-[100px] block">No file</span>
+                </div>
             </div>
 
             <div id="scroll-container">
@@ -156,7 +174,6 @@
             'Accept': 'application/vnd.github.v3+json'
         });
 
-        // 縮放功能
         function changeZoom(delta) { currentZoom = Math.min(Math.max(0.5, currentZoom + delta), 2.0); applyZoom(); }
         function resetZoom() { currentZoom = 1.0; applyZoom(); }
         function applyZoom() {
@@ -164,7 +181,6 @@
             document.getElementById('zoomPercent').innerText = Math.round(currentZoom * 100) + '%';
         }
 
-        // 側邊欄控制
         function toggleSidebar() {
             document.getElementById('sidebar').classList.toggle('sidebar-hidden');
             document.body.classList.toggle('sidebar-open');
@@ -178,7 +194,6 @@
             }
         }
 
-        // 同步檔案列表
         async function syncFiles() {
             if (!tokenInput.value) return;
             updateStatus('syncing', 'Syncing...');
@@ -224,7 +239,7 @@
         }
 
         async function createNewFile() {
-            const name = prompt("New filename (e.g. note.html):");
+            const name = prompt("Filename:");
             if (!name) return;
             closeSidebar();
             currentFilePath = name;
@@ -255,65 +270,30 @@
             } catch (e) { updateStatus('unsaved', 'Error'); } finally { isSaving = false; }
         }
 
-        // 圖片處理
         async function processAndInsertImage(file) {
             let targetFile = file;
-            const isHEIC = file.name?.toLowerCase().endsWith('.heic') || file.type === 'image/heic';
-            
-            if (isHEIC) {
-                updateStatus('syncing', 'Converting HEIC...');
+            if (file.name?.toLowerCase().endsWith('.heic') || file.type === 'image/heic') {
+                updateStatus('syncing', 'HEIC...');
                 try {
-                    const blob = await heic2any({ blob: file, toType: "image/jpeg", quality: 0.8 });
-                    targetFile = blob;
-                } catch (err) {
-                    updateStatus('unsaved', 'HEIC Error');
-                    return;
-                }
+                    targetFile = await heic2any({ blob: file, toType: "image/jpeg", quality: 0.8 });
+                } catch (err) { return; }
             }
-
             const reader = new FileReader();
             reader.onload = (ev) => {
                 const img = new Image();
                 img.onload = () => {
-                    const MAX_WIDTH = 1920; 
-                    let width = img.width;
-                    let height = img.height;
-                    if (width > MAX_WIDTH) {
-                        height = Math.round((MAX_WIDTH / width) * height);
-                        width = MAX_WIDTH;
-                    }
                     const canvas = document.createElement('canvas');
-                    canvas.width = width;
-                    canvas.height = height;
-                    const ctx = canvas.getContext('2d');
-                    ctx.drawImage(img, 0, 0, width, height);
-                    const resizedBase64 = canvas.toDataURL('image/jpeg', 0.8);
-                    const imgHtml = `<img src="${resizedBase64}" style="max-width:100%; height:auto;" /><p></p>`;
-                    document.execCommand('insertHTML', false, imgHtml);
+                    const scale = Math.min(1, 1920 / img.width);
+                    canvas.width = img.width * scale;
+                    canvas.height = img.height * scale;
+                    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+                    const resized = canvas.toDataURL('image/jpeg', 0.8);
+                    document.execCommand('insertHTML', false, `<img src="${resized}" style="max-width:100%;" /><p></p>`);
                     isDirty = true;
                 };
                 img.src = ev.target.result;
             };
             reader.readAsDataURL(targetFile);
-        }
-
-        // 事件監聽
-        document.getElementById('editor').addEventListener('paste', (e) => {
-            const items = (e.clipboardData || e.originalEvent.clipboardData).items;
-            for (let item of items) {
-                if (item.kind === 'file') {
-                    const file = item.getAsFile();
-                    if (file && (file.type.includes('image') || file.name?.toLowerCase().endsWith('.heic'))) {
-                        processAndInsertImage(file);
-                        e.preventDefault();
-                    }
-                }
-            }
-        });
-
-        function handleFileSelect(e) {
-            const file = e.target.files[0];
-            if (file) { processAndInsertImage(file); e.target.value = ''; }
         }
 
         document.getElementById('editor').addEventListener('input', () => {
@@ -325,30 +305,25 @@
         function updateStatus(type, text) {
             const dot = document.querySelector('.status-dot');
             const label = document.querySelector('#statusText');
-            if(dot && label) {
-                dot.className = `status-dot status-${type}`;
-                label.textContent = text;
-            }
+            if(dot && label) { dot.className = `status-dot status-${type}`; label.textContent = text; }
         }
 
         function exec(command) { document.execCommand(command, false, null); }
 
-        // --- 表格相關功能 ---
         function insertTable() {
             let table = `<table><tr><td>Cell</td><td>Cell</td></tr><tr><td>Cell</td><td>Cell</td></tr></table><p></p>`;
             document.execCommand('insertHTML', false, table);
         }
 
+        // --- 表格六宮格邏輯 ---
         function tableAction(action) {
-            const selection = window.getSelection();
-            if (!selection.rangeCount) return;
-
-            let td = selection.anchorNode;
+            const sel = window.getSelection();
+            if (!sel.rangeCount) return;
+            let td = sel.anchorNode;
             while (td && td.nodeName !== 'TD') {
                 td = td.parentNode;
                 if (!td || td.id === 'editor') return; 
             }
-
             if (!td) return;
 
             const tr = td.parentNode;
@@ -358,15 +333,23 @@
 
             switch (action) {
                 case 'addRowAbove':
-                    const newRowA = table.insertRow(rowIndex);
-                    for (let i = 0; i < tr.cells.length; i++) {
-                        newRowA.insertCell(i).innerHTML = "New";
-                    }
+                    const rA = table.insertRow(rowIndex);
+                    for (let i = 0; i < tr.cells.length; i++) rA.insertCell(i).innerHTML = "New";
                     break;
                 case 'addRowBelow':
-                    const newRowB = table.insertRow(rowIndex + 1);
-                    for (let i = 0; i < tr.cells.length; i++) {
-                        newRowB.insertCell(i).innerHTML = "New";
+                    const rB = table.insertRow(rowIndex + 1);
+                    for (let i = 0; i < tr.cells.length; i++) rB.insertCell(i).innerHTML = "New";
+                    break;
+                case 'addColLeft':
+                    for (let i = 0; i < table.rows.length; i++) {
+                        const cL = table.rows[i].insertCell(cellIndex);
+                        cL.innerHTML = "New";
+                    }
+                    break;
+                case 'addColRight':
+                    for (let i = 0; i < table.rows.length; i++) {
+                        const cR = table.rows[i].insertCell(cellIndex + 1);
+                        cR.innerHTML = "New";
                     }
                     break;
                 case 'deleteRow':
@@ -374,9 +357,7 @@
                     if (table.rows.length === 0) table.remove();
                     break;
                 case 'deleteColumn':
-                    for (let i = 0; i < table.rows.length; i++) {
-                        table.rows[i].deleteCell(cellIndex);
-                    }
+                    for (let i = 0; i < table.rows.length; i++) table.rows[i].deleteCell(cellIndex);
                     if (table.rows[0]?.cells.length === 0) table.remove();
                     break;
             }
@@ -385,7 +366,7 @@
         }
 
         function b64EncodeUnicode(str) {
-            return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, (match, p1) => String.fromCharCode('0x' + p1)));
+            return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, (m, p1) => String.fromCharCode('0x' + p1)));
         }
 
         async function deleteFile(path, sha) {
@@ -393,9 +374,14 @@
             await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, {
                 method: 'DELETE',
                 headers: getHeaders(),
-                body: JSON.stringify({ message: `Delete ${path}`, sha: sha })
+                body: JSON.stringify({ message: `Del ${path}`, sha: sha })
             });
             syncFiles();
+        }
+
+        function handleFileSelect(e) {
+            const file = e.target.files[0];
+            if (file) { processAndInsertImage(file); e.target.value = ''; }
         }
     </script>
 </body>
