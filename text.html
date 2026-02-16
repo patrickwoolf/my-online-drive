@@ -9,7 +9,7 @@
     <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
     <style>
         #scroll-container { 
-            height: calc(100vh - 160px); 
+            height: calc(100vh - 120px); 
             overflow-y: auto; 
             -webkit-overflow-scrolling: touch; 
         }
@@ -33,7 +33,6 @@
         .status-syncing { background: #3b82f6; animation: pulse 1s infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
         
-        /* 工具列橫向捲動優化 */
         .toolbar-scroll {
             display: flex;
             overflow-x: auto;
@@ -42,7 +41,6 @@
         }
         .toolbar-scroll::-webkit-scrollbar { display: none; }
         
-        /* 表格樣式預設 */
         table { border-collapse: collapse; width: 100%; margin: 10px 0; border: 1px solid #ddd; }
         td { border: 1px solid #ddd; padding: 8px; min-width: 40px; word-break: break-all; }
     </style>
@@ -52,28 +50,28 @@
     <div id="overlay" onclick="toggleSidebar()"></div>
 
     <header class="bg-white border-b p-2 shadow-sm z-20">
-        <div class="flex flex-col gap-2">
-            <div class="flex justify-between items-center px-2">
-                <div class="flex items-center gap-2">
-                    <button onclick="toggleSidebar()" class="p-2 hover:bg-slate-100 rounded-md">
-                        <i data-lucide="menu" size="20"></i>
-                    </button>
-                    <h1 class="text-md font-bold text-blue-600 flex items-center gap-1">
-                        <i data-lucide="cloud-cog" size="18"></i> <span class="hidden sm:inline">CloudDrive</span>
-                    </h1>
-                </div>
-                <div class="flex items-center gap-2">
-                    <div id="saveStatus" class="text-[10px] uppercase font-bold text-slate-400 flex items-center mr-2">
-                        <span class="status-dot status-saved mr-1"></span> <span id="statusText">Ready</span>
-                    </div>
-                    <button onclick="syncFiles()" class="bg-blue-600 text-white p-1.5 rounded-md">
-                        <i data-lucide="refresh-cw" size="16"></i>
-                    </button>
-                </div>
+        <div class="flex justify-between items-center px-2 gap-4">
+            <div class="flex items-center gap-2 shrink-0">
+                <button onclick="toggleSidebar()" class="p-2 hover:bg-slate-100 rounded-md">
+                    <i data-lucide="menu" size="20"></i>
+                </button>
+                <h1 class="text-md font-bold text-blue-600 flex items-center gap-1">
+                    <i data-lucide="cloud-cog" size="18"></i> <span class="hidden sm:inline">CloudDrive</span>
+                </h1>
             </div>
-            <div class="px-2 pb-1">
+
+            <div class="flex items-center gap-2 flex-1 justify-end max-w-2xl">
                 <input type="password" id="ghToken" placeholder="GitHub Token" 
-                       class="w-full border rounded-md px-3 py-1.5 text-xs focus:ring-2 focus:ring-blue-400 outline-none bg-slate-50">
+                       class="w-full max-w-[120px] sm:max-w-[240px] border rounded-md px-3 py-1.5 text-xs focus:ring-2 focus:ring-blue-400 outline-none bg-slate-50 transition-all">
+                
+                <div id="saveStatus" class="flex text-[10px] uppercase font-bold text-slate-400 items-center shrink-0">
+                    <span class="status-dot status-saved mr-1"></span> 
+                    <span id="statusText" class="hidden md:inline">Ready</span>
+                </div>
+
+                <button onclick="syncFiles()" class="bg-blue-600 text-white p-1.5 rounded-md shrink-0 hover:bg-blue-700 active:scale-95 transition-all">
+                    <i data-lucide="refresh-cw" size="16"></i>
+                </button>
             </div>
         </div>
     </header>
@@ -315,7 +313,6 @@
             document.execCommand('insertHTML', false, table);
         }
 
-        // --- 表格六宮格邏輯 ---
         function tableAction(action) {
             const sel = window.getSelection();
             if (!sel.rangeCount) return;
