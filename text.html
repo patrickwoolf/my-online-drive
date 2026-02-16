@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -33,6 +33,10 @@
         .status-syncing { background: #3b82f6; animation: pulse 1s infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
         .no-scrollbar::-webkit-scrollbar { display: none; }
+        
+        /* 表格樣式優化 */
+        table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+        td { border: 1px solid #ddd; padding: 8px; min-width: 40px; }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900 font-sans h-screen flex flex-col overflow-hidden">
@@ -83,22 +87,42 @@
             <div class="p-1 border-b flex items-center gap-1 bg-slate-50/50 overflow-x-auto no-scrollbar">
                 <button onclick="exec('bold')" class="p-2 min-w-[40px]"><i data-lucide="bold" size="16"></i></button>
                 <button onclick="exec('italic')" class="p-2 min-w-[40px]"><i data-lucide="italic" size="16"></i></button>
-                <button onclick="insertTable()" class="p-2 min-w-[40px]"><i data-lucide="table" size="16"></i></button>
                 
+                <div class="h-4 w-px bg-slate-300 mx-1"></div>
+                
+                <button onclick="insertTable()" class="p-2 min-w-[40px]" title="插入表格"><i data-lucide="table" size="16"></i></button>
+                
+                <div class="grid grid-cols-2 gap-px bg-slate-300 border border-slate-300 rounded overflow-hidden mx-1">
+                    <button onclick="tableAction('addRowAbove')" class="bg-white p-1 hover:bg-blue-50" title="向上新增列">
+                        <i data-lucide="list-plus" size="14" class="text-blue-600"></i>
+                    </button>
+                    <button onclick="tableAction('addRowBelow')" class="bg-white p-1 hover:bg-blue-50" title="向下新增列">
+                        <i data-lucide="list-plus" size="14" class="text-blue-600 rotate-180"></i>
+                    </button>
+                    <button onclick="tableAction('deleteRow')" class="bg-white p-1 hover:bg-red-50" title="刪除選定列">
+                        <i data-lucide="list-x" size="14" class="text-red-500"></i>
+                    </button>
+                    <button onclick="tableAction('deleteColumn')" class="bg-white p-1 hover:bg-red-50" title="刪除選定欄">
+                        <i data-lucide="columns-2" size="14" class="text-red-500"></i>
+                    </button>
+                </div>
+
+                <div class="h-4 w-px bg-slate-300 mx-1"></div>
+
                 <button onclick="document.getElementById('fileInput').click()" class="p-2 min-w-[40px] text-blue-600">
                     <i data-lucide="image-plus" size="16"></i>
                 </button>
                 <input type="file" id="fileInput" class="hidden" accept="image/*,.heic,.heif" onchange="handleFileSelect(event)">
 
                 <div class="h-4 w-px bg-slate-300 mx-1"></div>
+                
                 <div class="flex items-center bg-slate-200/50 rounded-lg px-1">
                     <button onclick="changeZoom(-0.1)" class="p-2 hover:bg-slate-200 rounded-md"><i data-lucide="zoom-out" size="16"></i></button>
                     <button onclick="resetZoom()" id="zoomPercent" class="text-[10px] font-bold w-10 text-center">100%</button>
                     <button onclick="changeZoom(0.1)" class="p-2 hover:bg-slate-200 rounded-md"><i data-lucide="zoom-in" size="16"></i></button>
                 </div>
 
-                <div class="h-4 w-px bg-slate-300 mx-1"></div>
-                <span id="currentFileName" class="text-xs font-medium text-slate-500 truncate px-2">No file open</span>
+                <span id="currentFileName" class="text-xs font-medium text-slate-500 truncate px-2 ml-auto">No file open</span>
             </div>
 
             <div id="scroll-container">
@@ -132,6 +156,7 @@
             'Accept': 'application/vnd.github.v3+json'
         });
 
+        // 縮放功能
         function changeZoom(delta) { currentZoom = Math.min(Math.max(0.5, currentZoom + delta), 2.0); applyZoom(); }
         function resetZoom() { currentZoom = 1.0; applyZoom(); }
         function applyZoom() {
@@ -139,6 +164,7 @@
             document.getElementById('zoomPercent').innerText = Math.round(currentZoom * 100) + '%';
         }
 
+        // 側邊欄控制
         function toggleSidebar() {
             document.getElementById('sidebar').classList.toggle('sidebar-hidden');
             document.body.classList.toggle('sidebar-open');
@@ -152,6 +178,7 @@
             }
         }
 
+        // 同步檔案列表
         async function syncFiles() {
             if (!tokenInput.value) return;
             updateStatus('syncing', 'Syncing...');
@@ -181,7 +208,7 @@
         async function selectFile(path, sha) { closeSidebar(); loadFile(path, sha); }
 
         async function loadFile(path, sha) {
-            updateStatus('syncing', 'Loading Large File...');
+            updateStatus('syncing', 'Loading...');
             try {
                 const res = await fetch(`https://api.github.com/repos/${REPO}/git/blobs/${sha}`, { headers: getHeaders() });
                 const data = await res.json();
@@ -197,7 +224,7 @@
         }
 
         async function createNewFile() {
-            const name = prompt("New filename:");
+            const name = prompt("New filename (e.g. note.html):");
             if (!name) return;
             closeSidebar();
             currentFilePath = name;
@@ -228,11 +255,9 @@
             } catch (e) { updateStatus('unsaved', 'Error'); } finally { isSaving = false; }
         }
 
-        // --- 核心改進：HEIC 支援與壓縮 ---
+        // 圖片處理
         async function processAndInsertImage(file) {
             let targetFile = file;
-
-            // 檢查是否為 HEIC 格式
             const isHEIC = file.name?.toLowerCase().endsWith('.heic') || file.type === 'image/heic';
             
             if (isHEIC) {
@@ -241,7 +266,6 @@
                     const blob = await heic2any({ blob: file, toType: "image/jpeg", quality: 0.8 });
                     targetFile = blob;
                 } catch (err) {
-                    console.error("HEIC conversion failed:", err);
                     updateStatus('unsaved', 'HEIC Error');
                     return;
                 }
@@ -267,13 +291,13 @@
                     const imgHtml = `<img src="${resizedBase64}" style="max-width:100%; height:auto;" /><p></p>`;
                     document.execCommand('insertHTML', false, imgHtml);
                     isDirty = true;
-                    updateStatus('unsaved', 'Unsaved');
                 };
                 img.src = ev.target.result;
             };
             reader.readAsDataURL(targetFile);
         }
 
+        // 事件監聽
         document.getElementById('editor').addEventListener('paste', (e) => {
             const items = (e.clipboardData || e.originalEvent.clipboardData).items;
             for (let item of items) {
@@ -289,10 +313,7 @@
 
         function handleFileSelect(e) {
             const file = e.target.files[0];
-            if (file) {
-                processAndInsertImage(file);
-                e.target.value = '';
-            }
+            if (file) { processAndInsertImage(file); e.target.value = ''; }
         }
 
         document.getElementById('editor').addEventListener('input', () => {
@@ -311,9 +332,56 @@
         }
 
         function exec(command) { document.execCommand(command, false, null); }
+
+        // --- 表格相關功能 ---
         function insertTable() {
-            let table = `<table border="1" style="width:100%; border-collapse: collapse; margin: 10px 0;"><tr><td style="border:1px solid #ddd; padding:8px;">Cell</td><td style="border:1px solid #ddd; padding:8px;">Cell</td></tr></table><p></p>`;
+            let table = `<table><tr><td>Cell</td><td>Cell</td></tr><tr><td>Cell</td><td>Cell</td></tr></table><p></p>`;
             document.execCommand('insertHTML', false, table);
+        }
+
+        function tableAction(action) {
+            const selection = window.getSelection();
+            if (!selection.rangeCount) return;
+
+            let td = selection.anchorNode;
+            while (td && td.nodeName !== 'TD') {
+                td = td.parentNode;
+                if (!td || td.id === 'editor') return; 
+            }
+
+            if (!td) return;
+
+            const tr = td.parentNode;
+            const table = tr.closest('table');
+            const rowIndex = tr.rowIndex;
+            const cellIndex = td.cellIndex;
+
+            switch (action) {
+                case 'addRowAbove':
+                    const newRowA = table.insertRow(rowIndex);
+                    for (let i = 0; i < tr.cells.length; i++) {
+                        newRowA.insertCell(i).innerHTML = "New";
+                    }
+                    break;
+                case 'addRowBelow':
+                    const newRowB = table.insertRow(rowIndex + 1);
+                    for (let i = 0; i < tr.cells.length; i++) {
+                        newRowB.insertCell(i).innerHTML = "New";
+                    }
+                    break;
+                case 'deleteRow':
+                    table.deleteRow(rowIndex);
+                    if (table.rows.length === 0) table.remove();
+                    break;
+                case 'deleteColumn':
+                    for (let i = 0; i < table.rows.length; i++) {
+                        table.rows[i].deleteCell(cellIndex);
+                    }
+                    if (table.rows[0]?.cells.length === 0) table.remove();
+                    break;
+            }
+            isDirty = true;
+            updateStatus('unsaved', 'Unsaved');
         }
 
         function b64EncodeUnicode(str) {
