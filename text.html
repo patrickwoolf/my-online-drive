@@ -33,11 +33,13 @@
         .status-syncing { background: #3b82f6; animation: pulse 1s infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
         
+        /* 工具列橫向捲動 */
         .toolbar-scroll {
             display: flex;
             overflow-x: auto;
             white-space: nowrap;
             -webkit-overflow-scrolling: touch;
+            scrollbar-width: none; /* Firefox */
         }
         .toolbar-scroll::-webkit-scrollbar { display: none; }
         
@@ -117,7 +119,7 @@
                         <i data-lucide="list-x" size="14" class="text-red-500"></i>
                     </button>
                     <button onclick="tableAction('deleteColumn')" class="bg-white p-1.5 hover:bg-red-50" title="刪除選定欄">
-                        <i data-lucide="columns-2" size="14" class="text-red-500"></i>
+                        <i data-lucide="x" size="14" class="text-red-500 font-bold"></i>
                     </button>
                 </div>
 
@@ -155,12 +157,18 @@
         let isSaving = false;
         let currentZoom = 1.0;
 
-        lucide.createIcons();
+        // 初始化圖標函式
+        function initIcons() {
+            if (window.lucide) {
+                lucide.createIcons();
+            }
+        }
 
         const tokenInput = document.getElementById('ghToken');
         tokenInput.value = localStorage.getItem('gh_token') || '';
         
         window.addEventListener('DOMContentLoaded', () => {
+            initIcons();
             if (tokenInput.value) syncFiles();
             else document.getElementById('fileList').innerHTML = '<div class="text-center py-4 text-slate-400 text-xs">Enter Token</div>';
         });
@@ -213,7 +221,7 @@
                         </button>`;
                     list.appendChild(div);
                 });
-                lucide.createIcons();
+                initIcons(); // 動態載入檔案後重新初始化圖標
                 updateStatus('saved', 'Ready');
             } catch (err) { updateStatus('unsaved', 'Error'); }
         }
