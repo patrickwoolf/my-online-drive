@@ -3,10 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>CloudDrive Editor (Legacy Support)</title>
+    <title>CloudDrive Editor (Ultimate Fix)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
     <style>
         #scroll-container { height: calc(100vh - 120px); overflow-y: auto; -webkit-overflow-scrolling: touch; }
         #editor { 
@@ -26,6 +25,7 @@
         .status-syncing { background: #3b82f6; animation: pulse 1s infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
         img { display: block; margin: 10px 0; border-radius: 4px; max-width: 100%; height: auto; }
+        img.migrating { filter: blur(2px) grayscale(1); opacity: 0.5; }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900 font-sans h-screen flex flex-col overflow-hidden sidebar-active">
@@ -79,22 +79,13 @@
             if (savedToken) { document.getElementById('ghToken').value = savedToken; syncFiles(); }
         });
 
-        document.getElementById('editor').addEventListener('paste', async (e) => {
-            const items = (e.clipboardData || e.originalEvent.clipboardData).items;
-            for (let item of items) {
-                if (item.type.indexOf('image') !== -1) {
-                    e.preventDefault();
-                    uploadImageFile(item.getAsFile());
-                }
-            }
-        });
+        const getHeaders = () => ({ 'Authorization': `token ${document.getElementById('ghToken').value}`, 'Accept': 'application/vnd.github.v3+json' });
 
         async function syncFiles() {
-            const token = document.getElementById('ghToken').value;
-            if (!token) return;
+            if (!document.getElementById('ghToken').value) return;
             updateStatus('syncing', 'Syncing...');
             try {
-                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/`, { headers: { 'Authorization': `token ${token}` } });
+                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/`, { headers: getHeaders() });
                 const files = await res.json();
                 const list = document.getElementById('fileList');
                 list.innerHTML = '';
@@ -110,85 +101,124 @@
             } catch (err) { updateStatus('unsaved', 'Sync Error'); }
         }
 
+        // 解決大檔案加載的核心：使用 Raw 模式並處理大體積數據
         async function selectFile(path, sha) {
-            updateStatus('syncing', 'Loading...');
+            updateStatus('syncing', 'Fetching Large Data...');
+            const token = document.getElementById('ghToken').value;
             try {
-                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { headers: { 'Authorization': `token ${document.getElementById('ghToken').value}` } });
-                const data = await res.json();
-                const content = decodeURIComponent(escape(atob(data.content)));
+                // 1. 先獲取檔案的最新 SHA 和詳細資訊
+                const metaRes = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}?t=${Date.now()}`, { headers: getHeaders() });
+                const metaData = await metaRes.json();
+                currentFileSha = metaData.sha;
+                currentFilePath = path;
+
+                // 2. 針對可能非常大的檔案，直接從 raw.githubusercontent 抓取內容 (加上 Token 授權)
+                const rawUrl = `https://raw.githubusercontent.com/${REPO}/main/${path}?t=${Date.now()}`;
+                const res = await fetch(rawUrl, { headers: { 'Authorization': `token ${token}` } });
+                
+                if (!res.ok) throw new Error("Raw fetch failed");
+                const content = await res.text();
                 
                 document.getElementById('editor').innerHTML = content;
-                currentFilePath = path; currentFileSha = data.sha;
                 document.getElementById('currentFileName').innerText = path;
                 
-                // --- 核心：舊檔案 Base64 自動遷移 ---
-                await migrateBase64Images();
-                
-                lastSavedHTML = document.getElementById('editor').innerHTML;
-                isDirty = false; updateStatus('saved', 'Synced');
+                updateStatus('syncing', 'Optimizing Images...');
                 closeSidebar();
-            } catch (e) { updateStatus('unsaved', 'Load Error'); }
+
+                // 3. 非同步處理 Base64 遷移，不影響文字顯示
+                setTimeout(() => migrateBase64Images(), 500);
+
+                lastSavedHTML = content;
+                isDirty = false;
+                updateStatus('saved', 'Loaded');
+            } catch (e) { 
+                console.error(e);
+                updateStatus('unsaved', 'Load Failed - File too large?'); 
+            }
         }
 
-        // 掃描並轉換 Base64 圖片
         async function migrateBase64Images() {
             const imgs = document.getElementById('editor').querySelectorAll('img');
-            let migrationCount = 0;
-
+            let count = 0;
             for (let img of imgs) {
                 if (img.src.startsWith('data:image/')) {
-                    migrationCount++;
-                    updateStatus('syncing', `Migrating image ${migrationCount}...`);
+                    count++;
+                    img.classList.add('migrating');
                     try {
-                        // 將 Base64 轉成 Blob
-                        const res = await fetch(img.src);
-                        const blob = await res.blob();
-                        const fileName = `assets/migrated-${Date.now()}-${migrationCount}.jpg`;
-                        const base64data = img.src.split(',')[1];
-
-                        // 上傳到 GitHub
+                        const base64Content = img.src.split(',')[1];
+                        const fileName = `assets/migrated-${Date.now()}-${count}.jpg`;
+                        
                         const uploadRes = await fetch(`https://api.github.com/repos/${REPO}/contents/${fileName}`, {
                             method: 'PUT',
-                            headers: { 'Authorization': `token ${document.getElementById('ghToken').value}`, 'Accept': 'application/vnd.github.v3+json' },
-                            body: JSON.stringify({ message: 'Legacy Base64 Migration', content: base64data })
+                            headers: getHeaders(),
+                            body: JSON.stringify({ message: 'Auto migration', content: base64Content })
                         });
 
                         if (uploadRes.ok) {
                             const data = await uploadRes.json();
-                            img.src = data.content.download_url; // 替換為 URL
+                            img.src = data.content.download_url;
+                            img.classList.remove('migrating');
                             isDirty = true;
                         }
-                    } catch (err) { console.error("Migration failed for one image", err); }
+                    } catch (err) { img.classList.remove('migrating'); }
                 }
             }
-            if (isDirty) { 
-                updateStatus('unsaved', `${migrationCount} images migrated! Saving...`);
-                await saveCurrentFile(); 
-            }
+            if (isDirty) saveCurrentFile();
         }
 
+        // 保存邏輯：針對大檔案優化 Base64 編碼
+        async function saveCurrentFile() {
+            const html = document.getElementById('editor').innerHTML;
+            if (!currentFilePath || isSaving || (!isDirty && html === lastSavedHTML)) return;
+            
+            isSaving = true;
+            updateStatus('syncing', 'Uploading...');
+            try {
+                // 使用 UTF-8 安全的 Base64 編碼
+                const encodedContent = btoa(unescape(encodeURIComponent(html)));
+                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentFilePath}`, {
+                    method: 'PUT',
+                    headers: getHeaders(),
+                    body: JSON.stringify({ 
+                        message: `Save ${currentFilePath}`, 
+                        content: encodedContent, 
+                        sha: currentFileSha 
+                    })
+                });
+                
+                if (res.ok) {
+                    const data = await res.json();
+                    currentFileSha = data.content.sha;
+                    lastSavedHTML = html;
+                    isDirty = false;
+                    updateStatus('saved', 'Synced');
+                } else {
+                    const errData = await res.json();
+                    if (errData.message.includes('too large')) alert("檔案太大，GitHub 拒絕儲存。請手動刪除一些 Base64 圖片。");
+                    updateStatus('unsaved', 'Save failed');
+                }
+            } catch (e) { updateStatus('unsaved', 'Network error'); } finally { isSaving = false; }
+        }
+
+        // 其餘功能保持不變...
         async function uploadImageFile(file) {
             if (!currentFilePath) return alert("Open a file first!");
-            updateStatus('syncing', 'Uploading...');
             const reader = new FileReader();
             reader.onload = async (ev) => {
                 const img = new Image();
                 img.onload = async () => {
                     const canvas = document.createElement('canvas');
-                    const maxDim = 1280;
-                    const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+                    const scale = Math.min(1, 1280 / Math.max(img.width, img.height));
                     canvas.width = img.width * scale; canvas.height = img.height * scale;
                     canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
                     const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.7));
-                    const fileName = `assets/${Date.now()}.jpg`;
                     const readerBlob = new FileReader();
                     readerBlob.readAsDataURL(blob);
                     readerBlob.onloadend = async () => {
-                        const base64data = readerBlob.result.split(',')[1];
-                        const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${fileName}`, {
-                            method: 'PUT',
-                            headers: { 'Authorization': `token ${document.getElementById('ghToken').value}`, 'Accept': 'application/vnd.github.v3+json' },
-                            body: JSON.stringify({ message: 'Asset upload', content: base64data })
+                        const base64 = readerBlob.result.split(',')[1];
+                        const res = await fetch(`https://api.github.com/repos/${REPO}/contents/assets/${Date.now()}.jpg`, {
+                            method: 'PUT', headers: getHeaders(),
+                            body: JSON.stringify({ message: 'Asset', content: base64 })
                         });
                         if (res.ok) {
                             const data = await res.json();
@@ -203,42 +233,24 @@
         }
 
         function handleFileSelect(e) { if (e.target.files[0]) uploadImageFile(e.target.files[0]); e.target.value = ''; }
-
-        async function saveCurrentFile() {
-            const html = document.getElementById('editor').innerHTML;
-            if (!currentFilePath || isSaving || (!isDirty && html === lastSavedHTML)) return;
-            isSaving = true; updateStatus('syncing', 'Saving...');
-            try {
-                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentFilePath}`, {
-                    method: 'PUT',
-                    headers: { 'Authorization': `token ${document.getElementById('ghToken').value}`, 'Accept': 'application/vnd.github.v3+json' },
-                    body: JSON.stringify({ message: `Save ${currentFilePath}`, content: btoa(unescape(encodeURIComponent(html))), sha: currentFileSha || undefined })
-                });
-                if (res.ok) {
-                    const data = await res.json();
-                    currentFileSha = data.content.sha; lastSavedHTML = html; isDirty = false; updateStatus('saved', 'Synced');
-                }
-            } catch (e) { updateStatus('unsaved', 'Save Error'); } finally { isSaving = false; }
-        }
-
-        async function createNewFile() {
+        function createNewFile() {
             const name = prompt("Filename:");
             if (!name) return;
             currentFilePath = name; currentFileSha = ''; 
             document.getElementById('editor').innerHTML = '<div>New Doc</div>';
-            document.getElementById('currentFileName').innerText = name;
-            isDirty = true; await saveCurrentFile(); syncFiles(); closeSidebar();
+            isDirty = true; saveCurrentFile(); syncFiles(); closeSidebar();
         }
-
         document.getElementById('editor').addEventListener('input', () => { if (!isDirty) { isDirty = true; updateStatus('unsaved', 'Unsaved'); } });
+        document.getElementById('editor').addEventListener('paste', (e) => {
+            const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+            for (let item of items) if (item.type.indexOf('image') !== -1) { e.preventDefault(); uploadImageFile(item.getAsFile()); }
+        });
         setInterval(saveCurrentFile, 15000);
-
-        function updateStatus(type, text) {
-            const dot = document.querySelector('.status-dot');
-            const label = document.querySelector('#statusText');
-            if(dot && label) { dot.className = `status-dot status-${type}`; label.textContent = text; }
+        function updateStatus(type, text) { 
+            const d = document.querySelector('.status-dot'); 
+            const t = document.querySelector('#statusText');
+            if(d && t) { d.className = `status-dot status-${type}`; t.textContent = text; } 
         }
-
         function exec(cmd) { document.execCommand(cmd, false, null); document.getElementById('editor').focus(); }
         function insertTable() { document.execCommand('insertHTML', false, '<table><tr><td>Cell</td><td>Cell</td></tr></table><p></p>'); }
         function toggleSidebar() { document.getElementById('sidebar').classList.toggle('sidebar-closed'); document.body.classList.toggle('sidebar-active'); }
