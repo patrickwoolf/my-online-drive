@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>CloudDrive Editor (Fixed)</title>
+    <title>CloudDrive Editor (Remote Assets)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
@@ -13,29 +13,27 @@
             min-height: 100%; padding: 1.5rem 1.5rem 15rem 1.5rem; outline: none;
             content-visibility: auto; contain-intrinsic-size: 1000px;
         }
-        /* Sidebar logic: visible by default on desktop, hidden on mobile */
-        #sidebar { transition: all 0.3s ease; width: 280px; z-index: 50; flex-shrink: 0; }
-        .sidebar-hidden { margin-left: -280px; }
-        
+        #sidebar { 
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); 
+            width: 280px; z-index: 50; flex-shrink: 0; 
+            background: white; border-right: 1px solid #e2e8f0;
+        }
+        .sidebar-closed { margin-left: -280px; }
         #overlay { display: none; }
         @media (max-width: 768px) {
-            #sidebar { position: fixed; height: 100vh; background: white; margin-left: -280px; }
-            #sidebar.mobile-open { margin-left: 0; }
-            .sidebar-open #overlay { display: block; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 40; }
+            #sidebar { position: fixed; height: 100vh; }
+            body.sidebar-active #overlay { display: block; position: fixed; inset: 0; background: rgba(0,0,0,0.3); z-index: 40; }
         }
-
         .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
         .status-saved { background: #22c55e; }
         .status-unsaved { background: #ef4444; }
         .status-syncing { background: #3b82f6; animation: pulse 1s infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
-        
-        table { border-collapse: collapse; width: 100%; margin: 10px 0; border: 1px solid #ddd; }
-        td { border: 1px solid #ddd; padding: 8px; min-width: 40px; word-break: break-all; }
-        img { display: block; margin: 10px 0; border-radius: 4px; max-width: 100%; height: auto; }
+        img { display: block; margin: 10px 0; border-radius: 4px; max-width: 100%; height: auto; border: 2px solid transparent; }
+        img.uploading { opacity: 0.5; border: 2px dashed #3b82f6; }
     </style>
 </head>
-<body class="bg-slate-50 text-slate-900 font-sans h-screen flex flex-col overflow-hidden">
+<body class="bg-slate-50 text-slate-900 font-sans h-screen flex flex-col overflow-hidden sidebar-active">
     <div id="overlay" onclick="toggleSidebar()"></div>
     
     <header class="bg-white border-b p-2 shadow-sm z-20">
@@ -55,26 +53,30 @@
     </header>
 
     <div class="flex flex-1 overflow-hidden">
-        <aside id="sidebar" class="bg-white border-r flex flex-col">
+        <aside id="sidebar" class="flex flex-col">
             <div class="p-4 flex justify-between items-center border-b bg-slate-50">
                 <span class="text-xs font-bold uppercase text-slate-500">Files</span>
                 <button onclick="createNewFile()" class="p-1.5 text-blue-600 hover:bg-blue-100 rounded-md"><i data-lucide="file-plus" size="18"></i></button>
             </div>
-            <div id="fileList" class="flex-1 overflow-y-auto p-2 space-y-1">
-                <div class="text-center py-10 text-slate-400 text-xs">Waiting for token...</div>
-            </div>
+            <div id="fileList" class="flex-1 overflow-y-auto p-2 space-y-1"></div>
         </aside>
 
         <main class="flex-1 flex flex-col bg-white overflow-hidden w-full">
-            <div class="p-1 border-b bg-slate-50/50 flex items-center gap-1 overflow-x-auto no-scrollbar">
+            <div class="p-1 border-b bg-slate-50/50 flex items-center gap-1 overflow-x-auto">
                 <button onclick="exec('bold')" class="p-2 hover:bg-white rounded"><i data-lucide="bold" size="16"></i></button>
                 <button onclick="exec('italic')" class="p-2 hover:bg-white rounded"><i data-lucide="italic" size="16"></i></button>
                 <button onclick="insertTable()" class="p-2 text-slate-700 hover:bg-white rounded"><i data-lucide="table" size="18"></i></button>
-                <button onclick="document.getElementById('fileInput').click()" class="p-2 text-blue-600 hover:bg-white rounded"><i data-lucide="image-plus" size="18"></i></button>
+                
+                <button onclick="document.getElementById('fileInput').click()" class="p-2 text-blue-600 hover:bg-white rounded" title="Upload or Paste Image">
+                    <i data-lucide="image-plus" size="18"></i>
+                </button>
                 <input type="file" id="fileInput" class="hidden" accept="image/*" onchange="handleFileSelect(event)">
+                
                 <div class="ml-auto pr-2"><span id="currentFileName" class="text-xs font-medium text-slate-400 truncate max-w-[150px] block">No file open</span></div>
             </div>
-            <div id="scroll-container"><div id="editor" contenteditable="true" class="prose max-w-none"></div></div>
+            <div id="scroll-container">
+                <div id="editor" contenteditable="true" class="prose max-w-none" placeholder="Paste images directly here..."></div>
+            </div>
         </main>
     </div>
 
@@ -82,32 +84,29 @@
         const REPO = 'patrickwoolf/my-online-drive';
         let currentFilePath = '', currentFileSha = '', isDirty = false, isSaving = false, lastSavedHTML = '';
 
-        // Initial Load
         document.addEventListener('DOMContentLoaded', () => {
             lucide.createIcons();
             const savedToken = localStorage.getItem('gh_token');
-            if (savedToken) {
-                document.getElementById('ghToken').value = savedToken;
-                syncFiles();
+            if (savedToken) { document.getElementById('ghToken').value = savedToken; syncFiles(); }
+        });
+
+        // 1. Paste Listener: Catches Ctrl+V images and uploads as separate files
+        document.getElementById('editor').addEventListener('paste', async (e) => {
+            const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+            for (let item of items) {
+                if (item.type.indexOf('image') !== -1) {
+                    e.preventDefault(); 
+                    const file = item.getAsFile();
+                    uploadImageFile(file);
+                }
             }
-        });
-
-        const tokenInput = document.getElementById('ghToken');
-        tokenInput.addEventListener('input', (e) => {
-            localStorage.setItem('gh_token', e.target.value);
-        });
-
-        const getHeaders = () => ({ 
-            'Authorization': `token ${document.getElementById('ghToken').value}`, 
-            'Accept': 'application/vnd.github.v3+json' 
         });
 
         async function syncFiles() {
             if (!document.getElementById('ghToken').value) return;
             updateStatus('syncing', 'Syncing...');
             try {
-                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/`, { headers: getHeaders() });
-                if (!res.ok) throw new Error();
+                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/`, { headers: { 'Authorization': `token ${document.getElementById('ghToken').value}` } });
                 const files = await res.json();
                 const list = document.getElementById('fileList');
                 list.innerHTML = '';
@@ -115,12 +114,7 @@
                     if (file.type === 'dir' || file.name === 'assets') return;
                     const div = document.createElement('div');
                     div.className = 'flex justify-between items-center p-3 hover:bg-blue-50 rounded-md cursor-pointer group';
-                    div.innerHTML = `
-                        <div class="flex items-center gap-3 truncate flex-grow" onclick="selectFile('${file.path}', '${file.sha}')">
-                            <i data-lucide="file-text" size="16" class="text-blue-400"></i>
-                            <span class="truncate text-sm font-medium text-slate-700">${file.name}</span>
-                        </div>
-                    `;
+                    div.innerHTML = `<div onclick="selectFile('${file.path}', '${file.sha}')" class="flex items-center gap-3 truncate flex-grow"><i data-lucide="file-text" size="16" class="text-blue-400"></i><span class="truncate text-sm font-medium">${file.name}</span></div>`;
                     list.appendChild(div);
                 });
                 lucide.createIcons();
@@ -131,67 +125,20 @@
         async function selectFile(path, sha) {
             updateStatus('syncing', 'Loading...');
             try {
-                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { headers: getHeaders() });
+                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { headers: { 'Authorization': `token ${document.getElementById('ghToken').value}` } });
                 const data = await res.json();
                 const content = decodeURIComponent(escape(atob(data.content)));
                 document.getElementById('editor').innerHTML = content;
-                lastSavedHTML = content;
-                currentFilePath = path; 
-                currentFileSha = data.sha;
+                lastSavedHTML = content; currentFilePath = path; currentFileSha = data.sha;
                 document.getElementById('currentFileName').innerText = path;
-                isDirty = false; 
-                updateStatus('saved', 'Synced');
-                if (window.innerWidth < 768) toggleSidebar(); // Close on mobile after selection
+                isDirty = false; updateStatus('saved', 'Synced');
+                closeSidebar();
             } catch (e) { updateStatus('unsaved', 'Load Error'); }
         }
 
-        async function createNewFile() {
-            const name = prompt("Enter new filename (e.g. notes.html):");
-            if (!name) return;
-            const finalName = name.endsWith('.html') ? name : name + '.html';
-            
-            currentFilePath = finalName;
-            currentFileSha = '';
-            document.getElementById('editor').innerHTML = '<div>Start typing...</div>';
-            document.getElementById('currentFileName').innerText = finalName;
-            isDirty = true;
-            await saveCurrentFile();
-            syncFiles();
-        }
-
-        async function saveCurrentFile() {
-            const html = document.getElementById('editor').innerHTML;
-            if (!currentFilePath || isSaving || (!isDirty && html === lastSavedHTML)) return;
-            
-            isSaving = true; 
-            updateStatus('syncing', 'Saving...');
-            try {
-                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentFilePath}`, {
-                    method: 'PUT', 
-                    headers: getHeaders(),
-                    body: JSON.stringify({ 
-                        message: `Save ${currentFilePath}`, 
-                        content: btoa(unescape(encodeURIComponent(html))), 
-                        sha: currentFileSha || undefined 
-                    })
-                });
-                if (res.ok) {
-                    const data = await res.json();
-                    currentFileSha = data.content.sha;
-                    lastSavedHTML = html; 
-                    isDirty = false; 
-                    updateStatus('saved', 'Synced');
-                }
-            } catch (e) { updateStatus('unsaved', 'Save Error'); } finally { isSaving = false; }
-        }
-
-        async function handleFileSelect(e) {
-            const file = e.target.files[0];
-            if (!file || !currentFilePath) {
-                if (!currentFilePath) alert("Open a file first!");
-                return;
-            }
-            updateStatus('syncing', 'Processing Image...');
+        async function uploadImageFile(file) {
+            if (!currentFilePath) { alert("Please open or create a file first!"); return; }
+            updateStatus('syncing', 'Uploading Image...');
             
             const reader = new FileReader();
             reader.onload = async (ev) => {
@@ -204,21 +151,21 @@
                     canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
                     
                     const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.7));
-                    const fileName = `assets/${Date.now()}-${file.name.replace(/[^a-z0-9.]/gi, '_')}`;
+                    const fileName = `assets/${Date.now()}.jpg`;
                     
                     const readerBlob = new FileReader();
                     readerBlob.readAsDataURL(blob);
                     readerBlob.onloadend = async () => {
                         const base64data = readerBlob.result.split(',')[1];
-                        updateStatus('syncing', 'Uploading to Assets...');
                         const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${fileName}`, {
-                            method: 'PUT', headers: getHeaders(),
-                            body: JSON.stringify({ message: 'Upload asset', content: base64data })
+                            method: 'PUT',
+                            headers: { 'Authorization': `token ${document.getElementById('ghToken').value}`, 'Accept': 'application/vnd.github.v3+json' },
+                            body: JSON.stringify({ message: 'Asset upload', content: base64data })
                         });
                         if (res.ok) {
                             const data = await res.json();
                             document.execCommand('insertHTML', false, `<img src="${data.content.download_url}" loading="lazy" />`);
-                            isDirty = true; updateStatus('unsaved', 'Image Uploaded');
+                            isDirty = true; updateStatus('unsaved', 'Image Saved to GitHub');
                         }
                     };
                 };
@@ -227,34 +174,46 @@
             reader.readAsDataURL(file);
         }
 
-        document.getElementById('editor').addEventListener('input', () => {
-            if (!isDirty) { isDirty = true; updateStatus('unsaved', 'Unsaved'); }
-        });
+        function handleFileSelect(e) { if (e.target.files[0]) uploadImageFile(e.target.files[0]); e.target.value = ''; }
 
-        // 15-second auto-save
+        async function saveCurrentFile() {
+            const html = document.getElementById('editor').innerHTML;
+            if (!currentFilePath || isSaving || (!isDirty && html === lastSavedHTML)) return;
+            isSaving = true; updateStatus('syncing', 'Saving...');
+            try {
+                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentFilePath}`, {
+                    method: 'PUT',
+                    headers: { 'Authorization': `token ${document.getElementById('ghToken').value}`, 'Accept': 'application/vnd.github.v3+json' },
+                    body: JSON.stringify({ message: `Save ${currentFilePath}`, content: btoa(unescape(encodeURIComponent(html))), sha: currentFileSha || undefined })
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    currentFileSha = data.content.sha; lastSavedHTML = html; isDirty = false; updateStatus('saved', 'Synced');
+                }
+            } catch (e) { updateStatus('unsaved', 'Save Error'); } finally { isSaving = false; }
+        }
+
+        async function createNewFile() {
+            const name = prompt("Filename:");
+            if (!name) return;
+            currentFilePath = name.endsWith('.html') ? name : name + '.html';
+            currentFileSha = ''; document.getElementById('editor').innerHTML = '<div>New doc</div>';
+            isDirty = true; await saveCurrentFile(); syncFiles(); closeSidebar();
+        }
+
+        document.getElementById('editor').addEventListener('input', () => { if (!isDirty) { isDirty = true; updateStatus('unsaved', 'Unsaved'); } });
         setInterval(saveCurrentFile, 15000);
 
         function updateStatus(type, text) {
             const dot = document.querySelector('.status-dot');
             const label = document.querySelector('#statusText');
-            if(dot && label) { 
-                dot.className = `status-dot status-${type}`; 
-                label.textContent = text; 
-            }
+            if(dot && label) { dot.className = `status-dot status-${type}`; label.textContent = text; }
         }
 
         function exec(cmd) { document.execCommand(cmd, false, null); document.getElementById('editor').focus(); }
         function insertTable() { document.execCommand('insertHTML', false, '<table><tr><td>Cell</td><td>Cell</td></tr></table><p></p>'); }
-        
-        function toggleSidebar() { 
-            const sb = document.getElementById('sidebar');
-            if (window.innerWidth < 768) {
-                sb.classList.toggle('mobile-open');
-                document.body.classList.toggle('sidebar-open');
-            } else {
-                sb.classList.toggle('sidebar-hidden');
-            }
-        }
+        function toggleSidebar() { document.getElementById('sidebar').classList.toggle('sidebar-closed'); document.body.classList.toggle('sidebar-active'); }
+        function closeSidebar() { document.getElementById('sidebar').classList.add('sidebar-closed'); document.body.classList.remove('sidebar-active'); }
     </script>
 </body>
 </html>
