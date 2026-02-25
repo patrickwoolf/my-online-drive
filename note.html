@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>CloudDrive Editor (Remote Assets)</title>
+    <title>CloudDrive Editor</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
@@ -29,8 +29,8 @@
         .status-unsaved { background: #ef4444; }
         .status-syncing { background: #3b82f6; animation: pulse 1s infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
-        img { display: block; margin: 10px 0; border-radius: 4px; max-width: 100%; height: auto; border: 2px solid transparent; }
-        img.uploading { opacity: 0.5; border: 2px dashed #3b82f6; }
+        img { display: block; margin: 10px 0; border-radius: 4px; max-width: 100%; height: auto; }
+        .prose :focus { outline: none; }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900 font-sans h-screen flex flex-col overflow-hidden sidebar-active">
@@ -66,16 +66,12 @@
                 <button onclick="exec('bold')" class="p-2 hover:bg-white rounded"><i data-lucide="bold" size="16"></i></button>
                 <button onclick="exec('italic')" class="p-2 hover:bg-white rounded"><i data-lucide="italic" size="16"></i></button>
                 <button onclick="insertTable()" class="p-2 text-slate-700 hover:bg-white rounded"><i data-lucide="table" size="18"></i></button>
-                
-                <button onclick="document.getElementById('fileInput').click()" class="p-2 text-blue-600 hover:bg-white rounded" title="Upload or Paste Image">
-                    <i data-lucide="image-plus" size="18"></i>
-                </button>
+                <button onclick="document.getElementById('fileInput').click()" class="p-2 text-blue-600 hover:bg-white rounded" title="Add or Paste Image"><i data-lucide="image-plus" size="18"></i></button>
                 <input type="file" id="fileInput" class="hidden" accept="image/*" onchange="handleFileSelect(event)">
-                
                 <div class="ml-auto pr-2"><span id="currentFileName" class="text-xs font-medium text-slate-400 truncate max-w-[150px] block">No file open</span></div>
             </div>
             <div id="scroll-container">
-                <div id="editor" contenteditable="true" class="prose max-w-none" placeholder="Paste images directly here..."></div>
+                <div id="editor" contenteditable="true" class="prose max-w-none"></div>
             </div>
         </main>
     </div>
@@ -90,7 +86,7 @@
             if (savedToken) { document.getElementById('ghToken').value = savedToken; syncFiles(); }
         });
 
-        // 1. Paste Listener: Catches Ctrl+V images and uploads as separate files
+        // Paste interceptor
         document.getElementById('editor').addEventListener('paste', async (e) => {
             const items = (e.clipboardData || e.originalEvent.clipboardData).items;
             for (let item of items) {
@@ -103,10 +99,11 @@
         });
 
         async function syncFiles() {
-            if (!document.getElementById('ghToken').value) return;
+            const token = document.getElementById('ghToken').value;
+            if (!token) return;
             updateStatus('syncing', 'Syncing...');
             try {
-                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/`, { headers: { 'Authorization': `token ${document.getElementById('ghToken').value}` } });
+                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/`, { headers: { 'Authorization': `token ${token}` } });
                 const files = await res.json();
                 const list = document.getElementById('fileList');
                 list.innerHTML = '';
@@ -137,9 +134,8 @@
         }
 
         async function uploadImageFile(file) {
-            if (!currentFilePath) { alert("Please open or create a file first!"); return; }
-            updateStatus('syncing', 'Uploading Image...');
-            
+            if (!currentFilePath) { alert("Please open a file first!"); return; }
+            updateStatus('syncing', 'Uploading Asset...');
             const reader = new FileReader();
             reader.onload = async (ev) => {
                 const img = new Image();
@@ -149,10 +145,8 @@
                     const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
                     canvas.width = img.width * scale; canvas.height = img.height * scale;
                     canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-                    
                     const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.7));
                     const fileName = `assets/${Date.now()}.jpg`;
-                    
                     const readerBlob = new FileReader();
                     readerBlob.readAsDataURL(blob);
                     readerBlob.onloadend = async () => {
@@ -164,8 +158,8 @@
                         });
                         if (res.ok) {
                             const data = await res.json();
-                            document.execCommand('insertHTML', false, `<img src="${data.content.download_url}" loading="lazy" />`);
-                            isDirty = true; updateStatus('unsaved', 'Image Saved to GitHub');
+                            document.execCommand('insertHTML', false, `<img src="${data.content.download_url}" />`);
+                            isDirty = true;
                         }
                     };
                 };
@@ -194,11 +188,16 @@
         }
 
         async function createNewFile() {
-            const name = prompt("Filename:");
+            const name = prompt("Enter filename (no extension added automatically):");
             if (!name) return;
-            currentFilePath = name.endsWith('.html') ? name : name + '.html';
-            currentFileSha = ''; document.getElementById('editor').innerHTML = '<div>New doc</div>';
-            isDirty = true; await saveCurrentFile(); syncFiles(); closeSidebar();
+            currentFilePath = name; // No .html extension added here
+            currentFileSha = ''; 
+            document.getElementById('editor').innerHTML = '<div>New Document</div>';
+            document.getElementById('currentFileName').innerText = name;
+            isDirty = true; 
+            await saveCurrentFile(); 
+            syncFiles(); 
+            closeSidebar();
         }
 
         document.getElementById('editor').addEventListener('input', () => { if (!isDirty) { isDirty = true; updateStatus('unsaved', 'Unsaved'); } });
