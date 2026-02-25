@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>CloudDrive Editor</title>
+    <title>CloudDrive Editor Lite</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
         #scroll-container { height: calc(100vh - 120px); overflow-y: auto; -webkit-overflow-scrolling: touch; }
-        #editor { min-height: 100%; padding: 1.5rem 1.5rem 15rem 1.5rem; outline: none; content-visibility: auto; contain-intrinsic-size: 1000px; }
-        #sidebar { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); width: 280px; z-index: 50; flex-shrink: 0; background: white; border-right: 1px solid #e2e8f0; }
+        #editor { min-height: 100%; padding: 1.5rem 1.5rem 15rem 1.5rem; outline: none; }
+        #sidebar { transition: all 0.3s ease; width: 280px; z-index: 50; flex-shrink: 0; background: white; border-right: 1px solid #e2e8f0; }
         .sidebar-closed { margin-left: -280px; }
         #overlay { display: none; }
         @media (max-width: 768px) { #sidebar { position: fixed; height: 100vh; } body.sidebar-active #overlay { display: block; position: fixed; inset: 0; background: rgba(0,0,0,0.3); z-index: 40; } }
@@ -18,8 +18,7 @@
         .status-unsaved { background: #ef4444; }
         .status-syncing { background: #3b82f6; animation: pulse 1s infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
-        img { display: block; margin: 10px 0; border-radius: 4px; max-width: 100%; height: auto; transition: all 0.3s; }
-        img.migrating { filter: blur(4px) grayscale(1); opacity: 0.5; }
+        img { display: block; margin: 10px 0; border-radius: 4px; max-width: 100%; height: auto; }
         .file-item:hover .delete-btn { opacity: 1; }
         .delete-btn { opacity: 0; color: #ef4444; padding: 4px; transition: opacity 0.2s; }
     </style>
@@ -34,11 +33,11 @@
                 <h1 class="text-md font-bold text-blue-600 flex items-center gap-1"><i data-lucide="cloud-cog" size="18"></i> CloudDrive</h1>
             </div>
             <div class="flex items-center gap-2 flex-1 justify-end max-w-2xl">
-                <input type="password" id="ghToken" placeholder="GitHub Token" class="w-full max-w-[120px] sm:max-w-[240px] border rounded-md px-3 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-400">
+                <input type="password" id="ghToken" placeholder="GitHub Token" class="w-full max-w-[120px] border rounded-md px-3 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-400">
                 <div id="saveStatus" class="flex text-[10px] uppercase font-bold text-slate-400 items-center shrink-0">
-                    <span class="status-dot status-saved mr-1"></span><span id="statusText" class="hidden md:inline">Ready</span>
+                    <span class="status-dot status-saved mr-1"></span><span id="statusText">Ready</span>
                 </div>
-                <button onclick="syncFiles()" class="bg-blue-600 text-white p-1.5 rounded-md hover:bg-blue-700 transition-all"><i data-lucide="refresh-cw" size="16"></i></button>
+                <button onclick="syncFiles()" class="bg-blue-600 text-white p-1.5 rounded-md hover:bg-blue-700"><i data-lucide="refresh-cw" size="16"></i></button>
             </div>
         </div>
     </header>
@@ -57,9 +56,9 @@
                 <button onclick="exec('bold')" class="p-2 hover:bg-white rounded"><i data-lucide="bold" size="16"></i></button>
                 <button onclick="exec('italic')" class="p-2 hover:bg-white rounded"><i data-lucide="italic" size="16"></i></button>
                 <button onclick="insertTable()" class="p-2 text-slate-700 hover:bg-white rounded"><i data-lucide="table" size="18"></i></button>
-                <button onclick="document.getElementById('fileInput').click()" class="p-2 text-blue-600 hover:bg-white rounded" title="Add or Paste Image"><i data-lucide="image-plus" size="18"></i></button>
+                <button onclick="document.getElementById('fileInput').click()" class="p-2 text-blue-600 hover:bg-white rounded"><i data-lucide="image-plus" size="18"></i></button>
                 <input type="file" id="fileInput" class="hidden" accept="image/*" onchange="handleFileSelect(event)">
-                <div class="ml-auto pr-2"><span id="currentFileName" class="text-xs font-medium text-slate-400 truncate max-w-[150px] block">No file open</span></div>
+                <div class="ml-auto pr-2"><span id="currentFileName" class="text-xs font-medium text-slate-400 truncate max-w-[150px] block">No file</span></div>
             </div>
             <div id="scroll-container"><div id="editor" contenteditable="true" class="prose max-w-none"></div></div>
         </main>
@@ -71,8 +70,8 @@
 
         document.addEventListener('DOMContentLoaded', () => {
             lucide.createIcons();
-            const savedToken = localStorage.getItem('gh_token');
-            if (savedToken) { document.getElementById('ghToken').value = savedToken; syncFiles(); }
+            const tk = localStorage.getItem('gh_token');
+            if (tk) { document.getElementById('ghToken').value = tk; syncFiles(); }
         });
 
         document.getElementById('ghToken').addEventListener('input', e => localStorage.setItem('gh_token', e.target.value));
@@ -86,16 +85,16 @@
                 const files = await res.json();
                 const list = document.getElementById('fileList');
                 list.innerHTML = '';
-                files.forEach(file => {
-                    if (file.type === 'dir' || file.name === 'assets') return;
+                files.forEach(f => {
+                    if (f.type === 'dir' || f.name === 'assets') return;
                     const div = document.createElement('div');
-                    div.className = 'file-item flex justify-between items-center p-3 hover:bg-blue-50 rounded-md cursor-pointer group';
+                    div.className = 'file-item flex justify-between items-center p-3 hover:bg-blue-50 rounded-md cursor-pointer';
                     div.innerHTML = `
-                        <div onclick="selectFile('${file.path}')" class="flex items-center gap-3 truncate flex-grow">
+                        <div onclick="selectFile('${f.path}', '${f.sha}')" class="flex items-center gap-3 truncate flex-grow">
                             <i data-lucide="file-text" size="16" class="text-blue-400"></i>
-                            <span class="truncate text-sm font-medium">${file.name}</span>
+                            <span class="truncate text-sm font-medium">${f.name}</span>
                         </div>
-                        <button onclick="deleteFile('${file.path}', '${file.sha}')" class="delete-btn hover:bg-red-100 rounded-md">
+                        <button onclick="deleteFile('${f.path}', '${f.sha}')" class="delete-btn hover:bg-red-100 rounded-md">
                             <i data-lucide="trash-2" size="14"></i>
                         </button>`;
                     list.appendChild(div);
@@ -105,131 +104,52 @@
             } catch (err) { updateStatus('unsaved', 'Sync Error'); }
         }
 
-        async function selectFile(path) {
-            updateStatus('syncing', 'Fetching Data...');
-            const token = document.getElementById('ghToken').value;
+        async function selectFile(path, sha) {
+            updateStatus('syncing', 'Loading...');
             try {
-                // 1. 取得最新 Meta 資訊 (SHA)
-                const metaRes = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}?t=${Date.now()}`, { headers: getHeaders() });
-                const metaData = await metaRes.json();
-                currentFileSha = metaData.sha;
-                currentFilePath = path;
-
-                // 2. 使用 Raw 模式讀取原始內容（處理大檔案）
-                const rawUrl = `https://raw.githubusercontent.com/${REPO}/main/${path}?t=${Date.now()}`;
-                const res = await fetch(rawUrl, { headers: { 'Authorization': `token ${token}` } });
-                const content = await res.text();
+                // 使用標準 API 加載，移除複雜的 Raw 邏輯
+                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}?t=${Date.now()}`, { headers: getHeaders() });
+                const data = await res.json();
+                const content = decodeURIComponent(escape(atob(data.content)));
                 
                 document.getElementById('editor').innerHTML = content;
+                currentFilePath = path;
+                currentFileSha = data.sha;
                 document.getElementById('currentFileName').innerText = path;
                 
-                closeSidebar();
-                updateStatus('syncing', 'Optimizing...');
-                
-                // 3. 背景執行 Base64 遷移
-                setTimeout(() => migrateBase64Images(), 500);
-
                 lastSavedHTML = content;
                 isDirty = false;
                 updateStatus('saved', 'Opened');
-            } catch (e) { updateStatus('unsaved', 'Load Failed'); }
-        }
-
-        async function migrateBase64Images() {
-            const imgs = document.getElementById('editor').querySelectorAll('img');
-            let moved = 0;
-            for (let img of imgs) {
-                if (img.src.startsWith('data:image/')) {
-                    moved++;
-                    img.classList.add('migrating');
-                    try {
-                        const base64 = img.src.split(',')[1];
-                        const assetName = `assets/migrated-${Date.now()}-${moved}.jpg`;
-                        const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${assetName}`, {
-                            method: 'PUT', headers: getHeaders(),
-                            body: JSON.stringify({ message: 'Migration', content: base64 })
-                        });
-                        if (res.ok) {
-                            const data = await res.json();
-                            img.src = data.content.download_url;
-                            img.classList.remove('migrating');
-                            isDirty = true;
-                        }
-                    } catch (e) { img.classList.remove('migrating'); }
-                }
+                closeSidebar();
+            } catch (e) { 
+                updateStatus('unsaved', 'Load Failed'); 
+                console.error(e);
             }
-            if (isDirty) saveCurrentFile();
         }
 
         async function saveCurrentFile() {
             const html = document.getElementById('editor').innerHTML;
             if (!currentFilePath || isSaving || (!isDirty && html === lastSavedHTML)) return;
-            isSaving = true; updateStatus('syncing', 'Saving...');
-            
+            isSaving = true;
+            updateStatus('syncing', 'Saving...');
             try {
-                // 儲存前自動清理 HTML 沒用到的圖片
-                await cleanupUnusedAssets(html);
-
                 const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentFilePath}`, {
-                    method: 'PUT', headers: getHeaders(),
-                    body: JSON.stringify({ message: `Save ${currentFilePath}`, content: btoa(unescape(encodeURIComponent(html))), sha: currentFileSha })
+                    method: 'PUT',
+                    headers: getHeaders(),
+                    body: JSON.stringify({ 
+                        message: `Save ${currentFilePath}`, 
+                        content: btoa(unescape(encodeURIComponent(html))), 
+                        sha: currentFileSha 
+                    })
                 });
                 if (res.ok) {
                     const data = await res.json();
                     currentFileSha = data.content.sha;
-                    lastSavedHTML = html; isDirty = false; updateStatus('saved', 'Synced');
+                    lastSavedHTML = html;
+                    isDirty = false;
+                    updateStatus('saved', 'Synced');
                 }
             } catch (e) { updateStatus('unsaved', 'Save Error'); } finally { isSaving = false; }
-        }
-
-        async function deleteFile(path, sha) {
-            if (!confirm(`確定要刪除 ${path} 及其相關資產嗎？`)) return;
-            updateStatus('syncing', 'Cleaning...');
-            try {
-                const res = await fetch(`https://raw.githubusercontent.com/${REPO}/main/${path}`, { headers: { 'Authorization': `token ${document.getElementById('ghToken').value}` } });
-                const content = await res.text();
-                const assets = extractAssetNames(content);
-                for (const a of assets) await deleteAsset(a);
-
-                await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, {
-                    method: 'DELETE', headers: getHeaders(),
-                    body: JSON.stringify({ message: 'Delete', sha: sha })
-                });
-                if (currentFilePath === path) { document.getElementById('editor').innerHTML = ''; currentFilePath = ''; }
-                syncFiles();
-            } catch (e) { alert("Delete failed"); }
-        }
-
-        async function cleanupUnusedAssets(html) {
-            const currentAssets = extractAssetNames(html);
-            try {
-                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/assets`, { headers: getHeaders() });
-                if (!res.ok) return;
-                const allAssets = await res.json();
-                for (const a of allAssets) {
-                    if (!currentAssets.includes(a.name)) await deleteAsset(a.name, a.sha);
-                }
-            } catch (e) {}
-        }
-
-        function extractAssetNames(html) {
-            const regex = /assets\/([^"'\s>]+)/g;
-            const matches = []; let m;
-            while ((m = regex.exec(html)) !== null) { matches.push(m[1].split('?')[0]); }
-            return matches;
-        }
-
-        async function deleteAsset(name, sha = null) {
-            try {
-                if (!sha) {
-                    const res = await fetch(`https://api.github.com/repos/${REPO}/contents/assets/${name}`, { headers: getHeaders() });
-                    const data = await res.json(); sha = data.sha;
-                }
-                await fetch(`https://api.github.com/repos/${REPO}/contents/assets/${name}`, {
-                    method: 'DELETE', headers: getHeaders(),
-                    body: JSON.stringify({ message: 'Cleanup', sha: sha })
-                });
-            } catch (e) {}
         }
 
         async function uploadImageFile(file) {
@@ -240,16 +160,16 @@
                 const img = new Image();
                 img.onload = async () => {
                     const canvas = document.createElement('canvas');
-                    const scale = Math.min(1, 1280 / Math.max(img.width, img.height));
+                    const scale = Math.min(1, 1024 / Math.max(img.width, img.height));
                     canvas.width = img.width * scale; canvas.height = img.height * scale;
                     canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-                    const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.8));
-                    const assetName = `${Date.now()}.jpg`;
+                    const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.7));
                     const readerBlob = new FileReader();
                     readerBlob.readAsDataURL(blob);
                     readerBlob.onloadend = async () => {
                         const base64 = readerBlob.result.split(',')[1];
-                        const res = await fetch(`https://api.github.com/repos/${REPO}/contents/assets/${assetName}`, {
+                        const assetPath = `assets/${Date.now()}.jpg`;
+                        const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${assetPath}`, {
                             method: 'PUT', headers: getHeaders(),
                             body: JSON.stringify({ message: 'Upload', content: base64 })
                         });
@@ -265,18 +185,36 @@
             reader.readAsDataURL(file);
         }
 
+        async function deleteFile(path, sha) {
+            if (!confirm(`Delete ${path}?`)) return;
+            updateStatus('syncing', 'Deleting...');
+            try {
+                await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, {
+                    method: 'DELETE', headers: getHeaders(),
+                    body: JSON.stringify({ message: 'Delete', sha: sha })
+                });
+                if (currentFilePath === path) { document.getElementById('editor').innerHTML = ''; currentFilePath = ''; }
+                syncFiles();
+            } catch (e) { alert("Delete failed"); }
+        }
+
         function handleFileSelect(e) { if (e.target.files[0]) uploadImageFile(e.target.files[0]); e.target.value = ''; }
+        
         async function createNewFile() {
             const name = prompt("Filename:"); if (!name) return;
-            currentFilePath = name; currentFileSha = ''; document.getElementById('editor').innerHTML = '<div>New Doc</div>';
+            currentFilePath = name; currentFileSha = ''; 
+            document.getElementById('editor').innerHTML = '<div>New Doc</div>';
             isDirty = true; await saveCurrentFile(); syncFiles(); closeSidebar();
         }
+
         document.getElementById('editor').addEventListener('input', () => { if (!isDirty) { isDirty = true; updateStatus('unsaved', 'Unsaved'); } });
         document.getElementById('editor').addEventListener('paste', e => {
             const items = (e.clipboardData || e.originalEvent.clipboardData).items;
             for (let item of items) if (item.type.indexOf('image') !== -1) { e.preventDefault(); uploadImageFile(item.getAsFile()); }
         });
-        setInterval(saveCurrentFile, 30000);
+        
+        setInterval(saveCurrentFile, 20000);
+
         function updateStatus(type, text) { 
             const d = document.querySelector('.status-dot'); const t = document.querySelector('#statusText');
             if(d && t) { d.className = `status-dot status-${type}`; t.textContent = text; } 
