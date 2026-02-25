@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>CloudDrive Editor</title>
+    <title>CloudDrive Editor (Instant Paste)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
@@ -18,7 +18,11 @@
         .status-unsaved { background: #ef4444; }
         .status-syncing { background: #3b82f6; animation: pulse 1s infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
-        img { display: block; margin: 10px 0; border-radius: 4px; max-width: 100%; height: auto; }
+        
+        /* 圖片狀態樣式 */
+        img { display: block; margin: 10px 0; border-radius: 4px; max-width: 100%; height: auto; transition: opacity 0.3s; }
+        img.uploading { opacity: 0.4; filter: blur(2px); cursor: wait; border: 2px dashed #3b82f6; }
+        
         .file-item:hover .delete-btn { opacity: 1; }
         .delete-btn { opacity: 0; color: #ef4444; padding: 4px; transition: opacity 0.2s; border-radius: 4px; }
         .delete-btn:hover { background: #fee2e2; }
@@ -58,7 +62,7 @@
                 <button onclick="exec('italic')" class="p-2 hover:bg-white rounded"><i data-lucide="italic" size="16"></i></button>
                 <button onclick="insertTable()" class="p-2 text-slate-700 hover:bg-white rounded"><i data-lucide="table" size="18"></i></button>
                 <div class="w-px h-6 bg-slate-200 mx-1"></div>
-                <button onclick="document.getElementById('fileInput').click()" class="p-2 text-blue-600 hover:bg-white rounded" title="Upload/Paste Image"><i data-lucide="image-plus" size="18"></i></button>
+                <button onclick="document.getElementById('fileInput').click()" class="p-2 text-blue-600 hover:bg-white rounded"><i data-lucide="image-plus" size="18"></i></button>
                 <input type="file" id="fileInput" class="hidden" accept="image/*" onchange="handleFileSelect(event)">
                 <div class="ml-auto pr-2"><span id="currentFileName" class="text-xs font-medium text-slate-400 truncate max-w-[150px] block italic">No file selected</span></div>
             </div>
@@ -83,7 +87,7 @@
 
         async function syncFiles() {
             if (!document.getElementById('ghToken').value) return;
-            updateStatus('syncing', 'Updating list...');
+            updateStatus('syncing', 'Syncing...');
             try {
                 const res = await fetch(`https://api.github.com/repos/${REPO}/contents/?t=${Date.now()}`, { headers: getHeaders() });
                 const files = await res.json();
@@ -93,14 +97,7 @@
                     if (f.type === 'dir' || f.name === 'assets') return;
                     const div = document.createElement('div');
                     div.className = 'file-item flex justify-between items-center p-3 hover:bg-blue-50 rounded-md cursor-pointer transition-colors';
-                    div.innerHTML = `
-                        <div onclick="selectFile('${f.path}')" class="flex items-center gap-3 truncate flex-grow">
-                            <i data-lucide="file-text" size="16" class="text-blue-400"></i>
-                            <span class="truncate text-sm font-medium text-slate-700">${f.name}</span>
-                        </div>
-                        <button onclick="deleteFile('${f.path}', '${f.sha}')" class="delete-btn">
-                            <i data-lucide="trash-2" size="14"></i>
-                        </button>`;
+                    div.innerHTML = `<div onclick="selectFile('${f.path}')" class="flex items-center gap-3 truncate flex-grow"><i data-lucide="file-text" size="16" class="text-blue-400"></i><span class="truncate text-sm font-medium text-slate-700">${f.name}</span></div><button onclick="deleteFile('${f.path}', '${f.sha}')" class="delete-btn"><i data-lucide="trash-2" size="14"></i></button>`;
                     list.appendChild(div);
                 });
                 lucide.createIcons();
@@ -109,7 +106,7 @@
         }
 
         async function selectFile(path) {
-            updateStatus('syncing', 'Loading file...');
+            updateStatus('syncing', 'Loading...');
             try {
                 const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}?t=${Date.now()}`, { headers: getHeaders() });
                 const data = await res.json();
@@ -122,143 +119,135 @@
             } catch (e) { updateStatus('unsaved', 'Load Failed'); }
         }
 
-        // --- 核心：資產清理相關邏輯 ---
+        // --- 樂觀更新：先貼上預覽圖，再背景上傳 ---
+        async function uploadImageFile(file) {
+            if (!currentFilePath) return alert("Please open a file first!");
+            
+            // 1. 產生本地預覽網址
+            const tempUrl = URL.createObjectURL(file);
+            const tempId = 'img-' + Date.now();
+            
+            // 2. 立即插入編輯器 (狀態為 uploading)
+            const imgHtml = `<img src="${tempUrl}" id="${tempId}" class="uploading" title="Uploading to GitHub...">`;
+            document.execCommand('insertHTML', false, imgHtml);
+            isDirty = true;
 
-        // 提取 HTML 中所有引用到的資產名稱
+            // 3. 背景開始處理並上傳
+            try {
+                const img = new Image();
+                img.src = tempUrl;
+                await new Promise(resolve => img.onload = resolve);
+
+                const canvas = document.createElement('canvas');
+                const scale = Math.min(1, 1280 / Math.max(img.width, img.height));
+                canvas.width = img.width * scale; canvas.height = img.height * scale;
+                canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+                
+                const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.8));
+                const reader = new FileReader();
+                reader.readAsDataURL(blob);
+                
+                reader.onloadend = async () => {
+                    const base64 = reader.result.split(',')[1];
+                    const assetPath = `assets/${Date.now()}.jpg`;
+                    
+                    updateStatus('syncing', 'Uploading image...');
+                    const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${assetPath}`, {
+                        method: 'PUT', headers: getHeaders(),
+                        body: JSON.stringify({ message: 'Upload asset', content: base64 })
+                    });
+
+                    if (res.ok) {
+                        const data = await res.json();
+                        // 4. 上傳成功，替換真正網址並移除 Loading 樣式
+                        const uploadedImg = document.getElementById(tempId);
+                        if (uploadedImg) {
+                            uploadedImg.src = data.content.download_url;
+                            uploadedImg.classList.remove('uploading');
+                            uploadedImg.removeAttribute('id');
+                            uploadedImg.removeAttribute('title');
+                            URL.revokeObjectURL(tempUrl); // 釋放記憶體
+                            saveCurrentFile(); // 上傳完順便存檔一次確保 SHA 更新
+                        }
+                    } else {
+                        throw new Error("GitHub Upload Failed");
+                    }
+                };
+            } catch (e) {
+                const uploadedImg = document.getElementById(tempId);
+                if (uploadedImg) uploadedImg.remove();
+                alert("圖片上傳失敗，請檢查 Token 或網路。");
+            }
+        }
+
+        // 資產清理邏輯
         function extractAssetNames(html) {
             const regex = /assets\/([^"'\s>]+)/g;
             const names = []; let m;
-            while ((m = regex.exec(html)) !== null) {
-                // 移除可能的 URL 參數 (?t=...)
-                names.push(m[1].split('?')[0]);
-            }
+            while ((m = regex.exec(html)) !== null) { names.push(m[1].split('?')[0]); }
             return names;
         }
 
-        // 刪除單個資產
         async function deleteAsset(name, sha = null) {
             try {
                 if (!sha) {
                     const res = await fetch(`https://api.github.com/repos/${REPO}/contents/assets/${name}`, { headers: getHeaders() });
-                    if (!res.ok) return;
-                    const data = await res.json();
-                    sha = data.sha;
+                    if (res.ok) { const data = await res.json(); sha = data.sha; }
                 }
-                await fetch(`https://api.github.com/repos/${REPO}/contents/assets/${name}`, {
+                if (sha) await fetch(`https://api.github.com/repos/${REPO}/contents/assets/${name}`, {
                     method: 'DELETE', headers: getHeaders(),
-                    body: JSON.stringify({ message: `GC: delete unused asset ${name}`, sha: sha })
+                    body: JSON.stringify({ message: `GC: ${name}`, sha: sha })
                 });
-                console.log(`Deleted asset: ${name}`);
-            } catch (e) { console.error(`Failed to delete asset ${name}`, e); }
+            } catch (e) {}
         }
 
-        // 儲存時自動清理沒用到的圖片
         async function runAssetCleanup(html) {
             try {
                 const usedAssets = extractAssetNames(html);
                 const res = await fetch(`https://api.github.com/repos/${REPO}/contents/assets`, { headers: getHeaders() });
-                if (!res.ok) return; // 可能還沒建立 assets 資料夾
+                if (!res.ok) return;
                 const allAssets = await res.json();
-                
                 for (const asset of allAssets) {
-                    if (asset.type === 'file' && !usedAssets.includes(asset.name)) {
-                        // 如果在 assets 裡但 HTML 沒用到，就刪除
-                        await deleteAsset(asset.name, asset.sha);
-                    }
+                    if (asset.type === 'file' && !usedAssets.includes(asset.name)) await deleteAsset(asset.name, asset.sha);
                 }
-            } catch (e) { console.log("Cleanup background task skipped."); }
+            } catch (e) {}
         }
 
         async function saveCurrentFile() {
             const html = document.getElementById('editor').innerHTML;
             if (!currentFilePath || isSaving || (!isDirty && html === lastSavedHTML)) return;
-            isSaving = true;
-            updateStatus('syncing', 'Saving & Cleaning...');
-            
+            isSaving = true; updateStatus('syncing', 'Saving...');
             try {
-                // 1. 先儲存檔案
-                const contentBase64 = btoa(unescape(encodeURIComponent(html)));
                 const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentFilePath}`, {
                     method: 'PUT', headers: getHeaders(),
-                    body: JSON.stringify({ message: `Update ${currentFilePath}`, content: contentBase64, sha: currentFileSha })
+                    body: JSON.stringify({ message: `Update ${currentFilePath}`, content: btoa(unescape(encodeURIComponent(html))), sha: currentFileSha })
                 });
-                
                 if (res.ok) {
                     const data = await res.json();
-                    currentFileSha = data.content.sha;
-                    lastSavedHTML = html;
-                    isDirty = false;
-                    updateStatus('saved', 'Saved');
-                    
-                    // 2. 儲存成功後，異步執行資產清理（不影響主流程速度）
+                    currentFileSha = data.content.sha; lastSavedHTML = html; isDirty = false; updateStatus('saved', 'Saved');
                     runAssetCleanup(html);
                 }
             } catch (e) { updateStatus('unsaved', 'Save Error'); } finally { isSaving = false; }
         }
 
         async function deleteFile(path, sha) {
-            if (!confirm(`確定要徹底刪除 "${path}" 及其所有關連圖片嗎？`)) return;
-            updateStatus('syncing', 'Full deletion...');
+            if (!confirm(`Delete "${path}" and its images?`)) return;
+            updateStatus('syncing', 'Deleting...');
             try {
-                // 1. 取得檔案內容以辨識資產
                 const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { headers: getHeaders() });
                 const data = await res.json();
-                const content = decodeURIComponent(escape(atob(data.content)));
-                const assets = extractAssetNames(content);
-
-                // 2. 刪除所有引用的圖片
+                const assets = extractAssetNames(decodeURIComponent(escape(atob(data.content))));
                 for (const a of assets) await deleteAsset(a);
-
-                // 3. 刪除 HTML 文件
-                await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, {
-                    method: 'DELETE', headers: getHeaders(),
-                    body: JSON.stringify({ message: `Delete file and assets: ${path}`, sha: sha })
-                });
-
+                await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { method: 'DELETE', headers: getHeaders(), body: JSON.stringify({ message: 'Delete', sha: sha }) });
                 if (currentFilePath === path) { document.getElementById('editor').innerHTML = ''; currentFilePath = ''; }
                 syncFiles();
             } catch (e) { alert("Delete failed"); }
         }
 
-        // --- 圖片上傳與基本功能 ---
-
-        async function uploadImageFile(file) {
-            if (!currentFilePath) return alert("Please open a file first!");
-            updateStatus('syncing', 'Uploading image...');
-            const reader = new FileReader();
-            reader.onload = async (ev) => {
-                const img = new Image();
-                img.onload = async () => {
-                    const canvas = document.createElement('canvas');
-                    const scale = Math.min(1, 1024 / Math.max(img.width, img.height));
-                    canvas.width = img.width * scale; canvas.height = img.height * scale;
-                    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-                    const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.8));
-                    const readerBlob = new FileReader();
-                    readerBlob.readAsDataURL(blob);
-                    readerBlob.onloadend = async () => {
-                        const base64 = readerBlob.result.split(',')[1];
-                        const assetPath = `assets/${Date.now()}.jpg`;
-                        const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${assetPath}`, {
-                            method: 'PUT', headers: getHeaders(),
-                            body: JSON.stringify({ message: 'Add asset', content: base64 })
-                        });
-                        if (res.ok) {
-                            const data = await res.json();
-                            document.execCommand('insertHTML', false, `<img src="${data.content.download_url}" />`);
-                            isDirty = true;
-                        }
-                    };
-                };
-                img.src = ev.target.result;
-            };
-            reader.readAsDataURL(file);
-        }
-
         function handleFileSelect(e) { if (e.target.files[0]) uploadImageFile(e.target.files[0]); e.target.value = ''; }
         async function createNewFile() {
             const name = prompt("Filename:"); if (!name) return;
-            currentFilePath = name; currentFileSha = ''; document.getElementById('editor').innerHTML = '<div>New Document</div>';
+            currentFilePath = name; currentFileSha = ''; document.getElementById('editor').innerHTML = '<div>New...</div>';
             isDirty = true; await saveCurrentFile(); syncFiles(); closeSidebar();
         }
         document.getElementById('editor').addEventListener('input', () => { if (!isDirty) { isDirty = true; updateStatus('unsaved', 'Unsaved'); } });
