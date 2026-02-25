@@ -298,7 +298,7 @@
             if (!isDirty) { isDirty = true; updateStatus('unsaved', 'Unsaved'); }
         });
 
-        setInterval(() => { if (isDirty) saveCurrentFile(); }, 5000);
+        setInterval(() => { if (isDirty) saveCurrentFile(); }, 20000);
 
         function updateStatus(type, text) {
             const dot = document.querySelector('.status-dot');
