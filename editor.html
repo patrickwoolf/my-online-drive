@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>CloudDrive Editor</title>
+    <title>CloudDrive Editor (Legacy Support)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
@@ -13,11 +13,7 @@
             min-height: 100%; padding: 1.5rem 1.5rem 15rem 1.5rem; outline: none;
             content-visibility: auto; contain-intrinsic-size: 1000px;
         }
-        #sidebar { 
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); 
-            width: 280px; z-index: 50; flex-shrink: 0; 
-            background: white; border-right: 1px solid #e2e8f0;
-        }
+        #sidebar { transition: all 0.3s ease; width: 280px; z-index: 50; flex-shrink: 0; background: white; border-right: 1px solid #e2e8f0; }
         .sidebar-closed { margin-left: -280px; }
         #overlay { display: none; }
         @media (max-width: 768px) {
@@ -30,7 +26,6 @@
         .status-syncing { background: #3b82f6; animation: pulse 1s infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
         img { display: block; margin: 10px 0; border-radius: 4px; max-width: 100%; height: auto; }
-        .prose :focus { outline: none; }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900 font-sans h-screen flex flex-col overflow-hidden sidebar-active">
@@ -43,11 +38,11 @@
                 <h1 class="text-md font-bold text-blue-600 flex items-center gap-1"><i data-lucide="cloud-cog" size="18"></i> CloudDrive</h1>
             </div>
             <div class="flex items-center gap-2 flex-1 justify-end max-w-2xl">
-                <input type="password" id="ghToken" placeholder="GitHub Token" class="w-full max-w-[120px] sm:max-w-[240px] border rounded-md px-3 py-1.5 text-xs focus:ring-2 focus:ring-blue-400 outline-none">
+                <input type="password" id="ghToken" placeholder="GitHub Token" class="w-full max-w-[120px] sm:max-w-[240px] border rounded-md px-3 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-400">
                 <div id="saveStatus" class="flex text-[10px] uppercase font-bold text-slate-400 items-center shrink-0">
                     <span class="status-dot status-saved mr-1"></span><span id="statusText" class="hidden md:inline">Ready</span>
                 </div>
-                <button onclick="syncFiles()" class="bg-blue-600 text-white p-1.5 rounded-md shrink-0 hover:bg-blue-700 transition-all"><i data-lucide="refresh-cw" size="16"></i></button>
+                <button onclick="syncFiles()" class="bg-blue-600 text-white p-1.5 rounded-md hover:bg-blue-700 transition-all"><i data-lucide="refresh-cw" size="16"></i></button>
             </div>
         </div>
     </header>
@@ -66,13 +61,11 @@
                 <button onclick="exec('bold')" class="p-2 hover:bg-white rounded"><i data-lucide="bold" size="16"></i></button>
                 <button onclick="exec('italic')" class="p-2 hover:bg-white rounded"><i data-lucide="italic" size="16"></i></button>
                 <button onclick="insertTable()" class="p-2 text-slate-700 hover:bg-white rounded"><i data-lucide="table" size="18"></i></button>
-                <button onclick="document.getElementById('fileInput').click()" class="p-2 text-blue-600 hover:bg-white rounded" title="Add or Paste Image"><i data-lucide="image-plus" size="18"></i></button>
+                <button onclick="document.getElementById('fileInput').click()" class="p-2 text-blue-600 hover:bg-white rounded"><i data-lucide="image-plus" size="18"></i></button>
                 <input type="file" id="fileInput" class="hidden" accept="image/*" onchange="handleFileSelect(event)">
                 <div class="ml-auto pr-2"><span id="currentFileName" class="text-xs font-medium text-slate-400 truncate max-w-[150px] block">No file open</span></div>
             </div>
-            <div id="scroll-container">
-                <div id="editor" contenteditable="true" class="prose max-w-none"></div>
-            </div>
+            <div id="scroll-container"><div id="editor" contenteditable="true" class="prose max-w-none"></div></div>
         </main>
     </div>
 
@@ -86,14 +79,12 @@
             if (savedToken) { document.getElementById('ghToken').value = savedToken; syncFiles(); }
         });
 
-        // Paste interceptor
         document.getElementById('editor').addEventListener('paste', async (e) => {
             const items = (e.clipboardData || e.originalEvent.clipboardData).items;
             for (let item of items) {
                 if (item.type.indexOf('image') !== -1) {
-                    e.preventDefault(); 
-                    const file = item.getAsFile();
-                    uploadImageFile(file);
+                    e.preventDefault();
+                    uploadImageFile(item.getAsFile());
                 }
             }
         });
@@ -125,17 +116,60 @@
                 const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { headers: { 'Authorization': `token ${document.getElementById('ghToken').value}` } });
                 const data = await res.json();
                 const content = decodeURIComponent(escape(atob(data.content)));
+                
                 document.getElementById('editor').innerHTML = content;
-                lastSavedHTML = content; currentFilePath = path; currentFileSha = data.sha;
+                currentFilePath = path; currentFileSha = data.sha;
                 document.getElementById('currentFileName').innerText = path;
+                
+                // --- 核心：舊檔案 Base64 自動遷移 ---
+                await migrateBase64Images();
+                
+                lastSavedHTML = document.getElementById('editor').innerHTML;
                 isDirty = false; updateStatus('saved', 'Synced');
                 closeSidebar();
             } catch (e) { updateStatus('unsaved', 'Load Error'); }
         }
 
+        // 掃描並轉換 Base64 圖片
+        async function migrateBase64Images() {
+            const imgs = document.getElementById('editor').querySelectorAll('img');
+            let migrationCount = 0;
+
+            for (let img of imgs) {
+                if (img.src.startsWith('data:image/')) {
+                    migrationCount++;
+                    updateStatus('syncing', `Migrating image ${migrationCount}...`);
+                    try {
+                        // 將 Base64 轉成 Blob
+                        const res = await fetch(img.src);
+                        const blob = await res.blob();
+                        const fileName = `assets/migrated-${Date.now()}-${migrationCount}.jpg`;
+                        const base64data = img.src.split(',')[1];
+
+                        // 上傳到 GitHub
+                        const uploadRes = await fetch(`https://api.github.com/repos/${REPO}/contents/${fileName}`, {
+                            method: 'PUT',
+                            headers: { 'Authorization': `token ${document.getElementById('ghToken').value}`, 'Accept': 'application/vnd.github.v3+json' },
+                            body: JSON.stringify({ message: 'Legacy Base64 Migration', content: base64data })
+                        });
+
+                        if (uploadRes.ok) {
+                            const data = await uploadRes.json();
+                            img.src = data.content.download_url; // 替換為 URL
+                            isDirty = true;
+                        }
+                    } catch (err) { console.error("Migration failed for one image", err); }
+                }
+            }
+            if (isDirty) { 
+                updateStatus('unsaved', `${migrationCount} images migrated! Saving...`);
+                await saveCurrentFile(); 
+            }
+        }
+
         async function uploadImageFile(file) {
-            if (!currentFilePath) { alert("Please open a file first!"); return; }
-            updateStatus('syncing', 'Uploading Asset...');
+            if (!currentFilePath) return alert("Open a file first!");
+            updateStatus('syncing', 'Uploading...');
             const reader = new FileReader();
             reader.onload = async (ev) => {
                 const img = new Image();
@@ -188,16 +222,12 @@
         }
 
         async function createNewFile() {
-            const name = prompt("Enter filename (no extension added automatically):");
+            const name = prompt("Filename:");
             if (!name) return;
-            currentFilePath = name; // No .html extension added here
-            currentFileSha = ''; 
-            document.getElementById('editor').innerHTML = '<div>New Document</div>';
+            currentFilePath = name; currentFileSha = ''; 
+            document.getElementById('editor').innerHTML = '<div>New Doc</div>';
             document.getElementById('currentFileName').innerText = name;
-            isDirty = true; 
-            await saveCurrentFile(); 
-            syncFiles(); 
-            closeSidebar();
+            isDirty = true; await saveCurrentFile(); syncFiles(); closeSidebar();
         }
 
         document.getElementById('editor').addEventListener('input', () => { if (!isDirty) { isDirty = true; updateStatus('unsaved', 'Unsaved'); } });
