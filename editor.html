@@ -3,15 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>CloudDrive Editor (Instant Paste)</title>
+    <title>CloudDrive Editor (Safe Sync)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
         #scroll-container { height: calc(100vh - 120px); overflow-y: auto; -webkit-overflow-scrolling: touch; }
         #editor { min-height: 100%; padding: 1.5rem 1.5rem 15rem 1.5rem; outline: none; }
-        #editor * {
-            font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif !important;
-        }
+        /* 強制編輯器內所有元素使用系統字體，覆蓋貼上的樣式 */
+        #editor * { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif !important; }
+        
         #sidebar { transition: all 0.3s ease; width: 280px; z-index: 50; flex-shrink: 0; background: white; border-right: 1px solid #e2e8f0; }
         .sidebar-closed { margin-left: -280px; }
         #overlay { display: none; }
@@ -22,7 +22,6 @@
         .status-syncing { background: #3b82f6; animation: pulse 1s infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
         
-        /* 圖片狀態樣式 */
         img { display: block; margin: 10px 0; border-radius: 4px; max-width: 100%; height: auto; transition: opacity 0.3s; }
         img.uploading { opacity: 0.4; filter: blur(2px); cursor: wait; border: 2px dashed #3b82f6; }
         
@@ -122,20 +121,15 @@
             } catch (e) { updateStatus('unsaved', 'Load Failed'); }
         }
 
-        // --- 樂觀更新：先貼上預覽圖，再背景上傳 ---
         async function uploadImageFile(file) {
             if (!currentFilePath) return alert("Please open a file first!");
             
-            // 1. 產生本地預覽網址
             const tempUrl = URL.createObjectURL(file);
             const tempId = 'img-' + Date.now();
-            
-            // 2. 立即插入編輯器 (狀態為 uploading)
-            const imgHtml = `<img src="${tempUrl}" id="${tempId}" class="uploading" title="Uploading to GitHub...">`;
+            const imgHtml = `<img src="${tempUrl}" id="${tempId}" class="uploading" title="Uploading...">`;
             document.execCommand('insertHTML', false, imgHtml);
             isDirty = true;
 
-            // 3. 背景開始處理並上傳
             try {
                 const img = new Image();
                 img.src = tempUrl;
@@ -152,68 +146,34 @@
                 
                 reader.onloadend = async () => {
                     const base64 = reader.result.split(',')[1];
-                    const assetPath = `assets/${Date.now()}.jpg`;
+                    // 改進：將圖片存入以檔名命名的子資料夾，避免混亂
+                    const fileFolder = currentFilePath.replace(/\.[^/.]+$/, "");
+                    const assetPath = `assets/${fileFolder}/${Date.now()}.jpg`;
                     
                     updateStatus('syncing', 'Uploading image...');
                     const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${assetPath}`, {
                         method: 'PUT', headers: getHeaders(),
-                        body: JSON.stringify({ message: 'Upload asset', content: base64 })
+                        body: JSON.stringify({ message: `Upload asset for ${currentFilePath}`, content: base64 })
                     });
 
                     if (res.ok) {
                         const data = await res.json();
-                        // 4. 上傳成功，替換真正網址並移除 Loading 樣式
                         const uploadedImg = document.getElementById(tempId);
                         if (uploadedImg) {
                             uploadedImg.src = data.content.download_url;
                             uploadedImg.classList.remove('uploading');
                             uploadedImg.removeAttribute('id');
                             uploadedImg.removeAttribute('title');
-                            URL.revokeObjectURL(tempUrl); // 釋放記憶體
-                            saveCurrentFile(); // 上傳完順便存檔一次確保 SHA 更新
+                            URL.revokeObjectURL(tempUrl);
+                            saveCurrentFile(); 
                         }
-                    } else {
-                        throw new Error("GitHub Upload Failed");
-                    }
+                    } else { throw new Error("Upload Failed"); }
                 };
             } catch (e) {
                 const uploadedImg = document.getElementById(tempId);
                 if (uploadedImg) uploadedImg.remove();
-                alert("圖片上傳失敗，請檢查 Token 或網路。");
+                alert("圖片上傳失敗。");
             }
-        }
-
-        // 資產清理邏輯
-        function extractAssetNames(html) {
-            const regex = /assets\/([^"'\s>]+)/g;
-            const names = []; let m;
-            while ((m = regex.exec(html)) !== null) { names.push(m[1].split('?')[0]); }
-            return names;
-        }
-
-        async function deleteAsset(name, sha = null) {
-            try {
-                if (!sha) {
-                    const res = await fetch(`https://api.github.com/repos/${REPO}/contents/assets/${name}`, { headers: getHeaders() });
-                    if (res.ok) { const data = await res.json(); sha = data.sha; }
-                }
-                if (sha) await fetch(`https://api.github.com/repos/${REPO}/contents/assets/${name}`, {
-                    method: 'DELETE', headers: getHeaders(),
-                    body: JSON.stringify({ message: `GC: ${name}`, sha: sha })
-                });
-            } catch (e) {}
-        }
-
-        async function runAssetCleanup(html) {
-            try {
-                const usedAssets = extractAssetNames(html);
-                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/assets`, { headers: getHeaders() });
-                if (!res.ok) return;
-                const allAssets = await res.json();
-                for (const asset of allAssets) {
-                    if (asset.type === 'file' && !usedAssets.includes(asset.name)) await deleteAsset(asset.name, asset.sha);
-                }
-            } catch (e) {}
         }
 
         async function saveCurrentFile() {
@@ -228,36 +188,53 @@
                 if (res.ok) {
                     const data = await res.json();
                     currentFileSha = data.content.sha; lastSavedHTML = html; isDirty = false; updateStatus('saved', 'Saved');
-                    runAssetCleanup(html);
+                    // runAssetCleanup(html); // 安全起見，關閉自動清理功能
                 }
             } catch (e) { updateStatus('unsaved', 'Save Error'); } finally { isSaving = false; }
         }
 
         async function deleteFile(path, sha) {
-            if (!confirm(`Delete "${path}" and its images?`)) return;
+            if (!confirm(`Delete "${path}"? (Images in assets folder will be kept for safety)`)) return;
             updateStatus('syncing', 'Deleting...');
             try {
-                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { headers: getHeaders() });
-                const data = await res.json();
-                const assets = extractAssetNames(decodeURIComponent(escape(atob(data.content))));
-                for (const a of assets) await deleteAsset(a);
-                await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { method: 'DELETE', headers: getHeaders(), body: JSON.stringify({ message: 'Delete', sha: sha }) });
+                await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { 
+                    method: 'DELETE', headers: getHeaders(), 
+                    body: JSON.stringify({ message: 'Delete file', sha: sha }) 
+                });
                 if (currentFilePath === path) { document.getElementById('editor').innerHTML = ''; currentFilePath = ''; }
                 syncFiles();
             } catch (e) { alert("Delete failed"); }
         }
 
         function handleFileSelect(e) { if (e.target.files[0]) uploadImageFile(e.target.files[0]); e.target.value = ''; }
+        
         async function createNewFile() {
-            const name = prompt("Filename:"); if (!name) return;
+            const name = prompt("Filename (e.g. note.html):"); if (!name) return;
             currentFilePath = name; currentFileSha = ''; document.getElementById('editor').innerHTML = '<div>New...</div>';
             isDirty = true; await saveCurrentFile(); syncFiles(); closeSidebar();
         }
+
         document.getElementById('editor').addEventListener('input', () => { if (!isDirty) { isDirty = true; updateStatus('unsaved', 'Unsaved'); } });
+        
+        // 修改後的 Paste 事件：過濾字體樣式並處理圖片
         document.getElementById('editor').addEventListener('paste', e => {
             const items = (e.clipboardData || e.originalEvent.clipboardData).items;
-            for (let item of items) if (item.type.indexOf('image') !== -1) { e.preventDefault(); uploadImageFile(item.getAsFile()); }
+            let isImage = false;
+            for (let item of items) {
+                if (item.type.indexOf('image') !== -1) {
+                    e.preventDefault();
+                    uploadImageFile(item.getAsFile());
+                    isImage = true;
+                }
+            }
+            // 如果不是貼上圖片，則強制以純文字格式貼上，移除新細明體等樣式
+            if (!isImage) {
+                e.preventDefault();
+                const text = (e.originalEvent || e).clipboardData.getData('text/plain');
+                document.execCommand('insertText', false, text);
+            }
         });
+
         setInterval(saveCurrentFile, 30000);
         function updateStatus(type, text) { 
             const d = document.querySelector('.status-dot'); const t = document.querySelector('#statusText');
