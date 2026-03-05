@@ -18,7 +18,6 @@
             transform-origin: top center;
             box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
         }
-        /* 工具列橫向捲動優化 */
         .toolbar-scroll { display: flex; overflow-x: auto; white-space: nowrap; -ms-overflow-style: none; scrollbar-width: none; }
         .toolbar-scroll::-webkit-scrollbar { display: none; }
         
@@ -34,11 +33,23 @@
         .status-saved { background: #22c55e; }
         .status-unsaved { background: #ef4444; }
         .status-syncing { background: #3b82f6; animation: pulse 1s infinite; }
-        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 
-        .file-item { display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.75rem; border-radius: 0.5rem; cursor: pointer; }
+        /* 檔案項目與刪除按鈕邏輯 */
+        .file-item { display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; border-radius: 0.5rem; cursor: pointer; transition: background 0.2s; position: relative; }
         .file-item:hover { background-color: #eff6ff; }
-        .file-name { word-break: break-all; white-space: normal; font-size: 0.875rem; line-height: 1.25rem; color: #334155; font-weight: 500; flex: 1; }
+        .file-name { word-break: break-all; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.875rem; color: #334155; font-weight: 500; flex: 1; }
+        
+        /* 刪除按鈕預設隱藏，Hover 時顯示 */
+        .delete-btn { 
+            opacity: 0; 
+            transition: opacity 0.2s, color 0.2s; 
+            color: #94a3b8; 
+            padding: 4px;
+            border-radius: 4px;
+            shrink: 0;
+        }
+        .file-item:hover .delete-btn { opacity: 1; }
+        .delete-btn:hover { color: #ef4444; background: #fee2e2; }
         
         table { border-collapse: collapse; width: 100%; margin: 10px 0; border: 1px solid #cbd5e1; }
         td { border: 1px solid #cbd5e1; padding: 8px; min-width: 40px; }
@@ -92,7 +103,6 @@
             <div class="p-1 border-b bg-slate-50/50 toolbar-scroll items-center gap-1">
                 <button onclick="exec('bold')" class="p-2 min-w-[40px] hover:bg-white rounded"><i data-lucide="bold" size="16"></i></button>
                 <button onclick="exec('italic')" class="p-2 min-w-[40px] hover:bg-white rounded"><i data-lucide="italic" size="16"></i></button>
-                
                 <div class="h-6 w-px bg-slate-300 mx-1"></div>
                 
                 <button onclick="insertTable()" class="p-2 min-w-[40px] text-slate-700 hover:bg-white rounded" title="插入表格">
@@ -100,35 +110,19 @@
                 </button>
                 
                 <div class="grid grid-cols-3 gap-px bg-slate-300 border border-slate-300 rounded overflow-hidden mx-1 shrink-0">
-                    <button onclick="tableAction('addRowAbove')" class="bg-white p-1.5 hover:bg-blue-50" title="向上新增列">
-                        <i data-lucide="arrow-up-to-line" size="14" class="text-blue-600"></i>
-                    </button>
-                    <button onclick="tableAction('addColLeft')" class="bg-white p-1.5 hover:bg-blue-50" title="向左新增欄">
-                        <i data-lucide="arrow-left-to-line" size="14" class="text-blue-600"></i>
-                    </button>
-                    <button onclick="tableAction('addColRight')" class="bg-white p-1.5 hover:bg-blue-50" title="向右新增欄">
-                        <i data-lucide="arrow-right-to-line" size="14" class="text-blue-600"></i>
-                    </button>
-                    <button onclick="tableAction('addRowBelow')" class="bg-white p-1.5 hover:bg-blue-50" title="向下新增列">
-                        <i data-lucide="arrow-down-to-line" size="14" class="text-blue-600"></i>
-                    </button>
-                    <button onclick="tableAction('deleteRow')" class="bg-white p-1.5 hover:bg-red-50" title="刪除選定列">
-                        <i data-lucide="list-x" size="14" class="text-red-500"></i>
-                    </button>
-                    <button onclick="tableAction('deleteColumn')" class="bg-white p-1.5 hover:bg-red-50" title="刪除選定欄">
-                        <i data-lucide="columns-2" size="14" class="text-red-500"></i>
-                    </button>
+                    <button onclick="tableAction('addRowAbove')" class="bg-white p-1.5 hover:bg-blue-50"><i data-lucide="arrow-up-to-line" size="14" class="text-blue-600"></i></button>
+                    <button onclick="tableAction('addColLeft')" class="bg-white p-1.5 hover:bg-blue-50"><i data-lucide="arrow-left-to-line" size="14" class="text-blue-600"></i></button>
+                    <button onclick="tableAction('addColRight')" class="bg-white p-1.5 hover:bg-blue-50"><i data-lucide="arrow-right-to-line" size="14" class="text-blue-600"></i></button>
+                    <button onclick="tableAction('addRowBelow')" class="bg-white p-1.5 hover:bg-blue-50"><i data-lucide="arrow-down-to-line" size="14" class="text-blue-600"></i></button>
+                    <button onclick="tableAction('deleteRow')" class="bg-white p-1.5 hover:bg-red-50"><i data-lucide="list-x" size="14" class="text-red-500"></i></button>
+                    <button onclick="tableAction('deleteColumn')" class="bg-white p-1.5 hover:bg-red-50"><i data-lucide="columns-2" size="14" class="text-red-500"></i></button>
                 </div>
 
                 <div class="h-6 w-px bg-slate-300 mx-1"></div>
-
-                <button onclick="document.getElementById('fileInput').click()" class="p-2 min-w-[40px] text-blue-600 hover:bg-white rounded">
-                    <i data-lucide="image-plus" size="18"></i>
-                </button>
+                <button onclick="document.getElementById('fileInput').click()" class="p-2 min-w-[40px] text-blue-600 hover:bg-white rounded"><i data-lucide="image-plus" size="18"></i></button>
                 <input type="file" id="fileInput" class="hidden" accept="image/*" onchange="handleImageSelect(event)">
 
                 <div class="h-6 w-px bg-slate-300 mx-1"></div>
-                
                 <div class="flex items-center bg-slate-200/50 rounded-lg px-1 shrink-0">
                     <button onclick="changeZoom(-0.1)" class="p-2 hover:bg-slate-200 rounded-md"><i data-lucide="zoom-out" size="16"></i></button>
                     <button onclick="resetZoom()" id="zoomPercent" class="text-[10px] font-bold w-10 text-center">100%</button>
@@ -177,11 +171,13 @@
                     const div = document.createElement('div');
                     div.className = 'file-item';
                     div.innerHTML = `
-                        <div onclick="handleFileClick('${f.path}', '${f.download_url}', ${isEditable}, ${isPdf})" class="flex items-start gap-3 flex-grow min-w-0">
+                        <div onclick="handleFileClick('${f.path}', '${f.download_url}', ${isEditable}, ${isPdf})" class="flex items-center gap-3 flex-1 min-w-0">
                             <i data-lucide="${isEditable ? 'file-text' : (isPdf ? 'file-digit' : 'file')}" size="18" class="${isEditable ? 'text-blue-500' : 'text-slate-400'} shrink-0"></i>
                             <span class="file-name">${f.name}</span>
                         </div>
-                        <button onclick="event.stopPropagation(); deleteFile('${f.path}', '${f.sha}')" class="text-red-400 hover:text-red-600 px-1"><i data-lucide="trash-2" size="14"></i></button>`;
+                        <button onclick="event.stopPropagation(); deleteFile('${f.path}', '${f.sha}')" class="delete-btn" title="刪除檔案">
+                            <i data-lucide="trash-2" size="14"></i>
+                        </button>`;
                     list.appendChild(div);
                 });
                 lucide.createIcons();
@@ -200,18 +196,14 @@
                 isDirty = false; updateStatus('saved', 'Opened');
                 if (window.innerWidth < 768) toggleSidebar();
             } else if (isPdf) {
-                updateStatus('syncing', 'Loading PDF...');
                 const res = await fetch(url);
                 const blob = await res.blob();
                 window.open(URL.createObjectURL(new Blob([blob], {type: 'application/pdf'})), '_blank');
-                updateStatus('saved', 'Ready');
             } else { window.open(url, '_blank'); }
         }
 
-        // --- 表格功能 ---
         function insertTable() {
-            const html = '<table><tr><td></td><td></td></tr><tr><td></td><td></td></tr></table><p><br></p>';
-            document.execCommand('insertHTML', false, html);
+            document.execCommand('insertHTML', false, '<table><tr><td></td><td></td></tr><tr><td></td><td></td></tr></table><p><br></p>');
         }
 
         function tableAction(cmd) {
@@ -220,51 +212,31 @@
             if (!td) return;
             const tr = td.parentElement, table = tr.closest('table');
             const colIdx = td.cellIndex, rowIdx = tr.rowIndex;
-
-            if (cmd === 'addRowAbove') {
-                const r = table.insertRow(rowIdx);
-                for(let i=0; i<tr.cells.length; i++) r.insertCell().innerHTML = "";
-            } else if (cmd === 'addRowBelow') {
-                const r = table.insertRow(rowIdx + 1);
-                for(let i=0; i<tr.cells.length; i++) r.insertCell().innerHTML = "";
-            } else if (cmd === 'addColLeft') {
-                Array.from(table.rows).forEach(r => r.insertCell(colIdx));
-            } else if (cmd === 'addColRight') {
-                Array.from(table.rows).forEach(r => r.insertCell(colIdx + 1));
-            } else if (cmd === 'deleteRow') {
-                table.rows.length > 1 ? table.deleteRow(rowIdx) : table.remove();
-            } else if (cmd === 'deleteColumn') {
-                if (tr.cells.length > 1) Array.from(table.rows).forEach(r => r.deleteCell(colIdx));
-                else table.remove();
-            }
+            if (cmd === 'addRowAbove') { const r = table.insertRow(rowIdx); for(let i=0; i<tr.cells.length; i++) r.insertCell(); }
+            else if (cmd === 'addRowBelow') { const r = table.insertRow(rowIdx + 1); for(let i=0; i<tr.cells.length; i++) r.insertCell(); }
+            else if (cmd === 'addColLeft') { Array.from(table.rows).forEach(r => r.insertCell(colIdx)); }
+            else if (cmd === 'addColRight') { Array.from(table.rows).forEach(r => r.insertCell(colIdx + 1)); }
+            else if (cmd === 'deleteRow') { table.rows.length > 1 ? table.deleteRow(rowIdx) : table.remove(); }
+            else if (cmd === 'deleteColumn') { if (tr.cells.length > 1) Array.from(table.rows).forEach(r => r.deleteCell(colIdx)); else table.remove(); }
             isDirty = true;
         }
 
-        // --- 縮放功能 ---
-        function changeZoom(delta) {
-            zoomLevel = Math.min(Math.max(0.5, zoomLevel + delta), 2.0);
-            applyZoom();
-        }
+        function changeZoom(delta) { zoomLevel = Math.min(Math.max(0.5, zoomLevel + delta), 2.0); applyZoom(); }
         function resetZoom() { zoomLevel = 1.0; applyZoom(); }
         function applyZoom() {
             document.getElementById('editor').style.transform = `scale(${zoomLevel})`;
             document.getElementById('zoomPercent').innerText = `${Math.round(zoomLevel * 100)}%`;
         }
 
-        // --- 圖片處理 ---
         async function handleImageSelect(e) {
             const file = e.target.files[0]; if (!file || !currentFilePath) return;
             const tempId = 'img-' + Date.now();
             document.execCommand('insertHTML', false, `<img src="${URL.createObjectURL(file)}" id="${tempId}" class="uploading">`);
-            
-            const reader = new FileReader();
-            reader.readAsDataURL(file);
+            const reader = new FileReader(); reader.readAsDataURL(file);
             reader.onload = async () => {
                 const base64 = reader.result.split(',')[1];
-                const path = `assets/${currentFilePath.split('.')[0]}/${Date.now()}.jpg`;
-                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, {
-                    method: 'PUT', headers: getHeaders(),
-                    body: JSON.stringify({ message: 'upload img', content: base64 })
+                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/assets/${currentFilePath.split('.')[0]}/${Date.now()}.jpg`, {
+                    method: 'PUT', headers: getHeaders(), body: JSON.stringify({ message: 'img', content: base64 })
                 });
                 if (res.ok) {
                     const d = await res.json();
@@ -280,34 +252,28 @@
             isSaving = true; updateStatus('syncing', 'Saving...');
             const content = btoa(unescape(encodeURIComponent(document.getElementById('editor').innerHTML)));
             const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentFilePath}`, {
-                method: 'PUT', headers: getHeaders(),
-                body: JSON.stringify({ message: 'auto save', content, sha: currentFileSha })
+                method: 'PUT', headers: getHeaders(), body: JSON.stringify({ message: 'save', content, sha: currentFileSha })
             });
-            if (res.ok) {
-                const d = await res.json(); currentFileSha = d.content.sha;
-                isDirty = false; updateStatus('saved', 'Saved');
-            }
+            if (res.ok) { const d = await res.json(); currentFileSha = d.content.sha; isDirty = false; updateStatus('saved', 'Saved'); }
             isSaving = false;
         }
 
+        async function deleteFile(path, sha) {
+            if (!confirm(`確定刪除 ${path}？`)) return;
+            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, {
+                method: 'DELETE', headers: getHeaders(), body: JSON.stringify({ message: 'delete', sha: sha })
+            });
+            if (res.ok) { if (currentFilePath === path) { document.getElementById('editor').innerHTML = ''; currentFilePath = ''; } syncFiles(); }
+        }
+
         async function createNewFile() {
-            const name = prompt("Filename (no ext for HTML):");
-            if (!name) return;
-            currentFilePath = name;
-            document.getElementById('editor').innerHTML = '<div>New Page</div>';
-            await saveFile();
-            syncFiles();
+            const name = prompt("Filename:"); if (!name) return;
+            currentFilePath = name; document.getElementById('editor').innerHTML = '<div>New Page</div>';
+            await saveFile(); syncFiles();
         }
 
-        function updateStatus(s, t) {
-            document.querySelector('.status-dot').className = `status-dot status-${s} mr-1`;
-            document.getElementById('statusText').innerText = t;
-        }
-
-        function toggleSidebar() { 
-            document.getElementById('sidebar').classList.toggle('sidebar-closed'); 
-            document.body.classList.toggle('sidebar-active');
-        }
+        function updateStatus(s, t) { document.querySelector('.status-dot').className = `status-dot status-${s} mr-1`; document.getElementById('statusText').innerText = t; }
+        function toggleSidebar() { document.getElementById('sidebar').classList.toggle('sidebar-closed'); document.body.classList.toggle('sidebar-active'); }
         function exec(c) { document.execCommand(c, false, null); }
         document.getElementById('editor').addEventListener('input', () => { isDirty = true; updateStatus('unsaved', 'Unsaved'); });
         setInterval(() => { if (isDirty) saveFile(); }, 10000);
