@@ -10,34 +10,20 @@
         #scroll-container { height: calc(100vh - 120px); overflow-y: auto; -webkit-overflow-scrolling: touch; }
         #editor { min-height: 100%; padding: 1.5rem 1.5rem 15rem 1.5rem; outline: none; }
         #editor * { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif !important; }
-        
-        /* Adjusted Sidebar for better text visibility */
-        #sidebar { transition: all 0.3s ease; width: 320px; z-index: 50; flex-shrink: 0; background: white; border-right: 1px solid #e2e8f0; }
-        .sidebar-closed { margin-left: -320px; }
-        
+        #sidebar { transition: all 0.3s ease; width: 300px; z-index: 50; flex-shrink: 0; background: white; border-right: 1px solid #e2e8f0; }
+        .sidebar-closed { margin-left: -300px; }
         #overlay { display: none; }
         @media (max-width: 768px) { #sidebar { position: fixed; height: 100vh; } body.sidebar-active #overlay { display: block; position: fixed; inset: 0; background: rgba(0,0,0,0.3); z-index: 40; } }
-        
         .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
         .status-saved { background: #22c55e; }
         .status-unsaved { background: #ef4444; }
         .status-syncing { background: #3b82f6; animation: pulse 1s infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
-        
-        /* File Item Styling for full name display */
         .file-item:hover .action-btns { opacity: 1; }
-        .action-btns { opacity: 0; transition: opacity 0.2s; display: flex; gap: 4px; flex-shrink: 0; }
+        .action-btns { opacity: 0; transition: opacity 0.2s; display: flex; gap: 4px; }
         .icon-btn { padding: 4px; border-radius: 4px; }
         .btn-delete { color: #ef4444; } .btn-delete:hover { background: #fee2e2; }
         .btn-download { color: #3b82f6; } .btn-download:hover { background: #dbeafe; }
-        
-        /* Key Change: Allow text to wrap and show fully */
-        .file-name-text { 
-            word-break: break-all; 
-            white-space: normal; 
-            line-height: 1.25;
-            flex: 1;
-        }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900 font-sans h-screen flex flex-col overflow-hidden sidebar-active">
@@ -50,7 +36,7 @@
                 <h1 class="text-md font-bold text-blue-600 flex items-center gap-1"><i data-lucide="cloud-cog" size="18"></i> CloudDrive</h1>
             </div>
             <div class="flex items-center gap-2 flex-1 justify-end">
-                <input type="password" id="ghToken" placeholder="GitHub Token" class="w-full max-w-[120px] border rounded-md px-3 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-400">
+                <input type="password" id="ghToken" placeholder="GitHub Token" class="w-full max-w-[120px] border rounded-md px-3 py-1.5 text-xs outline-none">
                 <div id="saveStatus" class="flex text-[10px] uppercase font-bold text-slate-400 items-center">
                     <span class="status-dot status-saved mr-1"></span><span id="statusText">Ready</span>
                 </div>
@@ -62,10 +48,10 @@
     <div class="flex flex-1 overflow-hidden">
         <aside id="sidebar" class="flex flex-col">
             <div class="p-4 flex justify-between items-center border-b bg-slate-50">
-                <span class="text-xs font-bold uppercase text-slate-500 tracking-wider">Storage</span>
+                <span class="text-xs font-bold uppercase text-slate-500 tracking-wider">My Files</span>
                 <div class="flex gap-1">
                     <button onclick="createNewFile()" title="New HTML" class="p-1.5 text-blue-600 hover:bg-blue-100 rounded-md"><i data-lucide="file-plus" size="18"></i></button>
-                    <button onclick="document.getElementById('uploadInput').click()" title="Upload File" class="p-1.5 text-emerald-600 hover:bg-emerald-100 rounded-md"><i data-lucide="upload-cloud" size="18"></i></button>
+                    <button onclick="document.getElementById('uploadInput').click()" title="Upload Any File" class="p-1.5 text-emerald-600 hover:bg-emerald-100 rounded-md"><i data-lucide="upload-cloud" size="18"></i></button>
                 </div>
             </div>
             <input type="file" id="uploadInput" class="hidden" onchange="handleUpload(event)">
@@ -80,7 +66,7 @@
                 <div class="w-px h-6 bg-slate-200 mx-1"></div>
                 <button onclick="document.getElementById('imgInput').click()" class="p-2 text-blue-600 hover:bg-white rounded"><i data-lucide="image-plus" size="18"></i></button>
                 <input type="file" id="imgInput" class="hidden" accept="image/*" onchange="handleImageSelect(event)">
-                <div class="ml-auto pr-2"><span id="currentFileName" class="text-xs font-medium text-slate-400 italic">No file selected</span></div>
+                <div class="ml-auto pr-2"><span id="currentFileName" class="text-xs font-medium text-slate-400 truncate max-w-[150px] italic">No file selected</span></div>
             </div>
             <div id="scroll-container">
                 <div id="editor" contenteditable="true" class="prose max-w-none focus:outline-none"></div>
@@ -112,18 +98,18 @@
                 files.forEach(f => {
                     if (f.type === 'dir' || f.name === 'assets') return;
                     const ext = f.name.split('.').pop().toLowerCase();
-                    const isBinary = ['pdf', 'docx', 'zip', 'jpg', 'png', 'jpeg'].includes(ext);
+                    const isBinary = ['pdf', 'docx', 'zip', 'jpg', 'png'].includes(ext);
                     
                     const div = document.createElement('div');
-                    div.className = 'file-item flex justify-between items-start gap-2 p-3 hover:bg-blue-50 rounded-md cursor-pointer transition-colors';
+                    div.className = 'file-item flex justify-between items-center p-3 hover:bg-blue-50 rounded-md cursor-pointer';
                     div.innerHTML = `
-                        <div onclick="handleFileClick('${f.path}', ${isBinary})" class="flex items-start gap-3 flex-grow min-w-0">
-                            <i data-lucide="${isBinary ? 'file-archive' : 'file-text'}" size="16" class="${isBinary ? 'text-emerald-500' : 'text-blue-400'} mt-0.5 shrink-0"></i>
-                            <span class="file-name-text text-sm font-medium ${isBinary ? 'text-slate-500' : 'text-slate-700'}">${f.name}</span>
+                        <div onclick="handleFileClick('${f.path}', ${isBinary})" class="flex items-center gap-3 truncate flex-grow">
+                            <i data-lucide="${isBinary ? 'file-archive' : 'file-text'}" size="16" class="${isBinary ? 'text-emerald-500' : 'text-blue-400'}"></i>
+                            <span class="truncate text-sm font-medium ${isBinary ? 'text-slate-500' : 'text-slate-700'}">${f.name}</span>
                         </div>
                         <div class="action-btns">
-                            <button onclick="downloadFile('${f.path}')" class="icon-btn btn-download" title="Download"><i data-lucide="download" size="14"></i></button>
-                            <button onclick="deleteFile('${f.path}', '${f.sha}')" class="icon-btn btn-delete" title="Delete"><i data-lucide="trash-2" size="14"></i></button>
+                            <button onclick="downloadFile('${f.path}')" class="icon-btn btn-download"><i data-lucide="download" size="14"></i></button>
+                            <button onclick="deleteFile('${f.path}', '${f.sha}')" class="icon-btn btn-delete"><i data-lucide="trash-2" size="14"></i></button>
                         </div>
                     `;
                     list.appendChild(div);
@@ -134,7 +120,11 @@
         }
 
         function handleFileClick(path, isBinary) {
-            if (isBinary) downloadFile(path); else selectFile(path);
+            if (isBinary) {
+                downloadFile(path);
+            } else {
+                selectFile(path);
+            }
         }
 
         async function downloadFile(path) {
@@ -184,7 +174,7 @@
         async function saveCurrentFile() {
             if (!currentFilePath || isSaving || !isDirty) return;
             const ext = currentFilePath.split('.').pop().toLowerCase();
-            if (['docx', 'pdf'].includes(ext)) return;
+            if (['docx', 'pdf'].includes(ext)) return; // Protection
 
             isSaving = true; updateStatus('syncing', 'Saving...');
             const html = document.getElementById('editor').innerHTML;
@@ -210,7 +200,8 @@
         }
 
         async function createNewFile() {
-            const name = prompt("Filename:"); if (!name) return;
+            const name = prompt("Filename (e.g. note.html):");
+            if (!name) return;
             currentFilePath = name; 
             document.getElementById('editor').innerHTML = '<div>New...</div>';
             isDirty = true; await saveCurrentFile(); syncFiles();
