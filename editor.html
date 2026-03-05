@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>CloudDrive Pro (Images & Docs)</title>
+    <title>CloudDrive</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
@@ -20,8 +20,7 @@
         .status-unsaved { background: #ef4444; }
         .status-syncing { background: #3b82f6; animation: pulse 1s infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
-        img { max-width: 100%; height: auto; border-radius: 8px; margin: 1rem 0; display: block; }
-        .pdf-viewer { width: 100%; height: 80vh; border: none; border-radius: 8px; }
+        .pdf-viewer { width: 100%; height: 80vh; border: none; border-radius: 8px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900 font-sans h-screen flex flex-col overflow-hidden sidebar-active">
@@ -46,10 +45,10 @@
     <div class="flex flex-1 overflow-hidden">
         <aside id="sidebar" class="flex flex-col">
             <div class="p-4 flex justify-between items-center border-b bg-slate-50">
-                <span class="text-xs font-bold uppercase text-slate-500 tracking-wider">Drive</span>
+                <span class="text-xs font-bold uppercase text-slate-500 tracking-wider">Storage</span>
                 <div class="flex gap-1">
-                    <button onclick="document.getElementById('uploadInput').click()" class="p-1.5 text-green-600 hover:bg-green-50 rounded-md"><i data-lucide="upload" size="18"></i></button>
-                    <button onclick="createNewFile()" class="p-1.5 text-blue-600 hover:bg-blue-100 rounded-md"><i data-lucide="file-plus" size="18"></i></button>
+                    <button onclick="document.getElementById('uploadInput').click()" class="p-1.5 text-green-600 hover:bg-green-50 rounded-md" title="Upload File"><i data-lucide="upload" size="18"></i></button>
+                    <button onclick="createNewFile()" class="p-1.5 text-blue-600 hover:bg-blue-100 rounded-md" title="New Note"><i data-lucide="file-plus" size="18"></i></button>
                 </div>
                 <input type="file" id="uploadInput" class="hidden" onchange="handleFileUpload(event)">
             </div>
@@ -62,9 +61,7 @@
                 <button onclick="exec('italic')" class="p-2 hover:bg-white rounded"><i data-lucide="italic" size="16"></i></button>
                 <button onclick="insertTable()" class="p-2 text-slate-700 hover:bg-white rounded"><i data-lucide="table" size="18"></i></button>
                 <div class="w-px h-6 bg-slate-200 mx-1"></div>
-                <button onclick="document.getElementById('imgInput').click()" class="p-2 text-blue-600 hover:bg-white rounded"><i data-lucide="image-plus" size="18"></i></button>
-                <button onclick="downloadCurrentFile()" class="p-2 text-slate-600 hover:bg-white rounded"><i data-lucide="download" size="18"></i></button>
-                <input type="file" id="imgInput" class="hidden" accept="image/*" onchange="handleImageUpload(event)">
+                <button onclick="downloadCurrentFile()" class="p-2 text-slate-600 hover:bg-white rounded" title="Download"><i data-lucide="download" size="18"></i></button>
                 <div class="ml-auto pr-2"><span id="currentFileName" class="text-xs font-medium text-slate-400 truncate max-w-[150px] block italic">No file selected</span></div>
             </div>
             <div id="scroll-container">
@@ -98,7 +95,12 @@
                     if (f.type === 'dir' || f.name === 'assets') return;
                     const div = document.createElement('div');
                     div.className = 'file-item flex justify-between items-center p-3 hover:bg-blue-50 rounded-md cursor-pointer transition-colors';
-                    div.innerHTML = `<div onclick="selectFile('${f.path}')" class="flex items-center gap-3 truncate flex-grow"><i data-lucide="${getFileIcon(f.name)}" size="16" class="text-blue-400"></i><span class="truncate text-sm font-medium text-slate-700">${f.name}</span></div><button onclick="deleteFile('${f.path}', '${f.sha}')" class="delete-btn"><i data-lucide="trash-2" size="14"></i></button>`;
+                    div.innerHTML = `
+                        <div onclick="selectFile('${f.path}')" class="flex items-center gap-3 truncate flex-grow">
+                            <i data-lucide="${getFileIcon(f.name)}" size="16" class="text-blue-400"></i>
+                            <span class="truncate text-sm font-medium text-slate-700">${f.name}</span>
+                        </div>
+                        <button onclick="deleteFile('${f.path}', '${f.sha}')" class="delete-btn"><i data-lucide="trash-2" size="14"></i></button>`;
                     list.appendChild(div);
                 });
                 lucide.createIcons();
@@ -111,6 +113,27 @@
             if (ext === 'pdf') return 'file-text';
             if (ext === 'docx') return 'file-box';
             return 'file-code';
+        }
+
+        async function handleFileUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            updateStatus('syncing', 'Uploading...');
+            
+            const reader = new FileReader();
+            reader.onload = async () => {
+                const base64Content = reader.result.split(',')[1];
+                try {
+                    const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${file.name}`, {
+                        method: 'PUT',
+                        headers: getHeaders(),
+                        body: JSON.stringify({ message: `Upload ${file.name}`, content: base64Content })
+                    });
+                    if (res.ok) { syncFiles(); updateStatus('saved', 'Upload Success'); }
+                    else { alert("Upload failed. File might already exist."); }
+                } catch (e) { updateStatus('unsaved', 'Error'); }
+            };
+            reader.readAsDataURL(file);
         }
 
         async function selectFile(path) {
@@ -131,15 +154,7 @@
                     editor.contentEditable = "true";
                     const docRes = await fetch(data.download_url);
                     const arrayBuffer = await docRes.arrayBuffer();
-                    // Mammoth configuration to support images
-                    const options = {
-                        convertImage: mammoth.images.imgElement(function(image) {
-                            return image.read("base64").then(function(imageBuffer) {
-                                return { src: "data:" + image.contentType + ";base64," + imageBuffer };
-                            });
-                        })
-                    };
-                    const result = await mammoth.convertToHtml({arrayBuffer: arrayBuffer}, options);
+                    const result = await mammoth.convertToHtml({arrayBuffer: arrayBuffer});
                     editor.innerHTML = result.value || "Empty Document";
                 } else {
                     editor.contentEditable = "true";
@@ -153,58 +168,21 @@
             } catch (e) { updateStatus('unsaved', 'Load Failed'); }
         }
 
-        async function handleImageUpload(e) {
-            const file = e.target.files[0];
-            if (!file || !currentFilePath) return alert("Select a file first!");
-            
-            const reader = new FileReader();
-            reader.onload = async () => {
-                const base64 = reader.result.split(',')[1];
-                const assetPath = `assets/${Date.now()}_${file.name}`;
-                updateStatus('syncing', 'Uploading image...');
-                
-                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${assetPath}`, {
-                    method: 'PUT', headers: getHeaders(),
-                    body: JSON.stringify({ message: 'Upload image', content: base64 })
-                });
-
-                if (res.ok) {
-                    const data = await res.json();
-                    const imgHtml = `<img src="${data.content.download_url}">`;
-                    document.execCommand('insertHTML', false, imgHtml);
-                    saveCurrentFile();
-                }
-            };
-            reader.readAsDataURL(file);
-        }
-
-        async function handleFileUpload(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = async () => {
-                const base64 = reader.result.split(',')[1];
-                await fetch(`https://api.github.com/repos/${REPO}/contents/${file.name}`, {
-                    method: 'PUT', headers: getHeaders(),
-                    body: JSON.stringify({ message: `Upload ${file.name}`, content: base64 })
-                });
-                syncFiles();
-            };
-            reader.readAsDataURL(file);
-        }
-
         function downloadCurrentFile() {
-            if (!currentDownloadUrl) return;
+            if (!currentDownloadUrl) return alert("No file selected");
             const link = document.createElement('a');
             link.href = currentDownloadUrl;
             link.download = currentFilePath;
+            document.body.appendChild(link);
             link.click();
+            document.body.removeChild(link);
         }
 
         async function saveCurrentFile() {
             if (!currentFilePath || currentFilePath.endsWith('.pdf') || currentFilePath.endsWith('.docx')) return;
             const html = document.getElementById('editor').innerHTML;
             if (isSaving || (!isDirty && html === lastSavedHTML)) return;
+            
             isSaving = true; updateStatus('syncing', 'Saving...');
             try {
                 const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentFilePath}`, {
@@ -218,21 +196,30 @@
             } catch (e) { updateStatus('unsaved', 'Save Error'); } finally { isSaving = false; }
         }
 
-        // Logic for basic operations
+        // Standard Utility Functions
         async function deleteFile(path, sha) {
-            if (confirm("Delete this file?")) {
-                await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, {
-                    method: 'DELETE', headers: getHeaders(),
-                    body: JSON.stringify({ message: 'Delete', sha: sha })
+            if (!confirm(`Delete "${path}"?`)) return;
+            try {
+                await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { 
+                    method: 'DELETE', headers: getHeaders(), body: JSON.stringify({ message: 'Delete', sha: sha }) 
                 });
                 syncFiles();
-            }
+            } catch (e) { alert("Delete failed"); }
+        }
+        async function createNewFile() {
+            const name = prompt("Filename (e.g. note.html):"); if (!name) return;
+            currentFilePath = name; currentFileSha = ''; document.getElementById('editor').innerHTML = '<div>New...</div>';
+            isDirty = true; await saveCurrentFile(); syncFiles(); closeSidebar();
+        }
+        function updateStatus(type, text) { 
+            const d = document.querySelector('.status-dot'); const t = document.querySelector('#statusText');
+            if(d && t) { d.className = `status-dot status-${type}`; t.textContent = text; } 
         }
         function exec(cmd) { document.execCommand(cmd, false, null); }
-        function insertTable() { document.execCommand('insertHTML', false, '<table class="border w-full"><tr><td class="border p-2"></td><td class="border p-2"></td></tr></table>'); }
+        function insertTable() { document.execCommand('insertHTML', false, '<table class="border-collapse border border-slate-300 w-full mb-4"><tr><td class="border border-slate-300 p-2"></td><td class="border border-slate-300 p-2"></td></tr></table>'); }
         function toggleSidebar() { document.getElementById('sidebar').classList.toggle('sidebar-closed'); document.body.classList.toggle('sidebar-active'); }
         function closeSidebar() { document.getElementById('sidebar').classList.add('sidebar-closed'); document.body.classList.remove('sidebar-active'); }
-        document.getElementById('editor').addEventListener('input', () => { if(!isDirty) { isDirty = true; updateStatus('unsaved', 'Unsaved'); }});
+        document.getElementById('editor').addEventListener('input', () => { if (!isDirty) { isDirty = true; updateStatus('unsaved', 'Unsaved'); } });
         setInterval(saveCurrentFile, 30000);
     </script>
 </body>
