@@ -11,6 +11,7 @@
         #editor { min-height: 100%; padding: 1.5rem 1.5rem 15rem 1.5rem; outline: none; }
         #editor * { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif !important; }
         
+        /* Adjusted Sidebar for better text visibility */
         #sidebar { transition: all 0.3s ease; width: 320px; z-index: 50; flex-shrink: 0; background: white; border-right: 1px solid #e2e8f0; }
         .sidebar-closed { margin-left: -320px; }
         
@@ -23,13 +24,20 @@
         .status-syncing { background: #3b82f6; animation: pulse 1s infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
         
+        /* File Item Styling for full name display */
         .file-item:hover .action-btns { opacity: 1; }
         .action-btns { opacity: 0; transition: opacity 0.2s; display: flex; gap: 4px; flex-shrink: 0; }
         .icon-btn { padding: 4px; border-radius: 4px; }
         .btn-delete { color: #ef4444; } .btn-delete:hover { background: #fee2e2; }
         .btn-download { color: #3b82f6; } .btn-download:hover { background: #dbeafe; }
         
-        .file-name-text { word-break: break-all; white-space: normal; line-height: 1.25; flex: 1; }
+        /* Key Change: Allow text to wrap and show fully */
+        .file-name-text { 
+            word-break: break-all; 
+            white-space: normal; 
+            line-height: 1.25;
+            flex: 1;
+        }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900 font-sans h-screen flex flex-col overflow-hidden sidebar-active">
@@ -84,9 +92,6 @@
         const REPO = 'patrickwoolf/my-online-drive';
         let currentFilePath = '', currentFileSha = '', isDirty = false, isSaving = false;
 
-        // Expanded list of non-editable binary/media files
-        const BINARY_EXTS = ['pdf', 'docx', 'zip', 'jpg', 'png', 'jpeg', 'mp4', 'mp3', 'mpeg', 'mpg', 'mov', 'avi', 'wav', 'gif'];
-
         document.addEventListener('DOMContentLoaded', () => {
             lucide.createIcons();
             const tk = localStorage.getItem('gh_token');
@@ -107,19 +112,13 @@
                 files.forEach(f => {
                     if (f.type === 'dir' || f.name === 'assets') return;
                     const ext = f.name.split('.').pop().toLowerCase();
-                    const isBinary = BINARY_EXTS.includes(ext);
+                    const isBinary = ['pdf', 'docx', 'zip', 'jpg', 'png', 'jpeg'].includes(ext);
                     
-                    // Logic to choose the right icon
-                    let iconName = 'file-text';
-                    if (['mp4', 'mpeg', 'mpg', 'mov', 'avi'].includes(ext)) iconName = 'video';
-                    else if (['mp3', 'wav'].includes(ext)) iconName = 'music';
-                    else if (isBinary) iconName = 'file-archive';
-
                     const div = document.createElement('div');
                     div.className = 'file-item flex justify-between items-start gap-2 p-3 hover:bg-blue-50 rounded-md cursor-pointer transition-colors';
                     div.innerHTML = `
                         <div onclick="handleFileClick('${f.path}', ${isBinary})" class="flex items-start gap-3 flex-grow min-w-0">
-                            <i data-lucide="${iconName}" size="16" class="${isBinary ? 'text-emerald-500' : 'text-blue-400'} mt-0.5 shrink-0"></i>
+                            <i data-lucide="${isBinary ? 'file-archive' : 'file-text'}" size="16" class="${isBinary ? 'text-emerald-500' : 'text-blue-400'} mt-0.5 shrink-0"></i>
                             <span class="file-name-text text-sm font-medium ${isBinary ? 'text-slate-500' : 'text-slate-700'}">${f.name}</span>
                         </div>
                         <div class="action-btns">
@@ -169,7 +168,7 @@
         async function handleUpload(e) {
             const file = e.target.files[0];
             if (!file) return;
-            updateStatus('syncing', 'Uploading media...');
+            updateStatus('syncing', 'Uploading...');
             const reader = new FileReader();
             reader.onload = async () => {
                 const base64 = reader.result.split(',')[1];
@@ -178,7 +177,6 @@
                     body: JSON.stringify({ message: `Upload ${file.name}`, content: base64 })
                 });
                 if (res.ok) { syncFiles(); updateStatus('saved', 'Uploaded'); }
-                else { alert("Upload failed. Check file size (GitHub API limit 25MB)."); }
             };
             reader.readAsDataURL(file);
         }
@@ -186,7 +184,7 @@
         async function saveCurrentFile() {
             if (!currentFilePath || isSaving || !isDirty) return;
             const ext = currentFilePath.split('.').pop().toLowerCase();
-            if (BINARY_EXTS.includes(ext)) return;
+            if (['docx', 'pdf'].includes(ext)) return;
 
             isSaving = true; updateStatus('syncing', 'Saving...');
             const html = document.getElementById('editor').innerHTML;
