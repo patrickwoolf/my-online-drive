@@ -3,15 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>CloudDrive Editor (Safe Sync)</title>
+    <title>CloudDrive Pro (PDF/DOCX)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
     <style>
         #scroll-container { height: calc(100vh - 120px); overflow-y: auto; -webkit-overflow-scrolling: touch; }
         #editor { min-height: 100%; padding: 1.5rem 1.5rem 15rem 1.5rem; outline: none; }
-        /* 強制編輯器內所有元素使用系統字體，覆蓋貼上的樣式 */
         #editor * { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif !important; }
-        
         #sidebar { transition: all 0.3s ease; width: 280px; z-index: 50; flex-shrink: 0; background: white; border-right: 1px solid #e2e8f0; }
         .sidebar-closed { margin-left: -280px; }
         #overlay { display: none; }
@@ -21,13 +20,9 @@
         .status-unsaved { background: #ef4444; }
         .status-syncing { background: #3b82f6; animation: pulse 1s infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
-        
-        img { display: block; margin: 10px 0; border-radius: 4px; max-width: 100%; height: auto; transition: opacity 0.3s; }
-        img.uploading { opacity: 0.4; filter: blur(2px); cursor: wait; border: 2px dashed #3b82f6; }
-        
+        img { display: block; margin: 10px 0; border-radius: 4px; max-width: 100%; height: auto; }
         .file-item:hover .delete-btn { opacity: 1; }
         .delete-btn { opacity: 0; color: #ef4444; padding: 4px; transition: opacity 0.2s; border-radius: 4px; }
-        .delete-btn:hover { background: #fee2e2; }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900 font-sans h-screen flex flex-col overflow-hidden sidebar-active">
@@ -52,9 +47,13 @@
     <div class="flex flex-1 overflow-hidden">
         <aside id="sidebar" class="flex flex-col">
             <div class="p-4 flex justify-between items-center border-b bg-slate-50">
-                <span class="text-xs font-bold uppercase text-slate-500 tracking-wider">Files</span>
-                <button onclick="createNewFile()" class="p-1.5 text-blue-600 hover:bg-blue-100 rounded-md"><i data-lucide="file-plus" size="18"></i></button>
+                <span class="text-xs font-bold uppercase text-slate-500 tracking-wider">Storage</span>
+                <div class="flex gap-1">
+                    <button onclick="createNewFile()" title="New HTML" class="p-1.5 text-blue-600 hover:bg-blue-100 rounded-md"><i data-lucide="file-plus" size="18"></i></button>
+                    <button onclick="document.getElementById('uploadInput').click()" title="Upload PDF/DOCX" class="p-1.5 text-emerald-600 hover:bg-emerald-100 rounded-md"><i data-lucide="upload-cloud" size="18"></i></button>
+                </div>
             </div>
+            <input type="file" id="uploadInput" class="hidden" accept=".pdf,.docx,.html,.txt" onchange="handleUpload(event)">
             <div id="fileList" class="flex-1 overflow-y-auto p-2 space-y-1"></div>
         </aside>
 
@@ -64,8 +63,8 @@
                 <button onclick="exec('italic')" class="p-2 hover:bg-white rounded"><i data-lucide="italic" size="16"></i></button>
                 <button onclick="insertTable()" class="p-2 text-slate-700 hover:bg-white rounded"><i data-lucide="table" size="18"></i></button>
                 <div class="w-px h-6 bg-slate-200 mx-1"></div>
-                <button onclick="document.getElementById('fileInput').click()" class="p-2 text-blue-600 hover:bg-white rounded"><i data-lucide="image-plus" size="18"></i></button>
-                <input type="file" id="fileInput" class="hidden" accept="image/*" onchange="handleFileSelect(event)">
+                <button onclick="document.getElementById('imgInput').click()" class="p-2 text-blue-600 hover:bg-white rounded"><i data-lucide="image-plus" size="18"></i></button>
+                <input type="file" id="imgInput" class="hidden" accept="image/*" onchange="handleImageSelect(event)">
                 <div class="ml-auto pr-2"><span id="currentFileName" class="text-xs font-medium text-slate-400 truncate max-w-[150px] block italic">No file selected</span></div>
             </div>
             <div id="scroll-container">
@@ -76,7 +75,7 @@
 
     <script>
         const REPO = 'patrickwoolf/my-online-drive';
-        let currentFilePath = '', currentFileSha = '', isDirty = false, isSaving = false, lastSavedHTML = '';
+        let currentFilePath = '', currentFileSha = '', isDirty = false, isSaving = false;
 
         document.addEventListener('DOMContentLoaded', () => {
             lucide.createIcons();
@@ -97,9 +96,20 @@
                 list.innerHTML = '';
                 files.forEach(f => {
                     if (f.type === 'dir' || f.name === 'assets') return;
+                    const ext = f.name.split('.').pop().toLowerCase();
+                    let icon = 'file-text';
+                    if(ext === 'pdf') icon = 'file-digit';
+                    if(ext === 'docx') icon = 'file-type-2';
+
                     const div = document.createElement('div');
-                    div.className = 'file-item flex justify-between items-center p-3 hover:bg-blue-50 rounded-md cursor-pointer transition-colors';
-                    div.innerHTML = `<div onclick="selectFile('${f.path}')" class="flex items-center gap-3 truncate flex-grow"><i data-lucide="file-text" size="16" class="text-blue-400"></i><span class="truncate text-sm font-medium text-slate-700">${f.name}</span></div><button onclick="deleteFile('${f.path}', '${f.sha}')" class="delete-btn"><i data-lucide="trash-2" size="14"></i></button>`;
+                    div.className = 'file-item flex justify-between items-center p-3 hover:bg-blue-50 rounded-md cursor-pointer';
+                    div.innerHTML = `
+                        <div onclick="selectFile('${f.path}')" class="flex items-center gap-3 truncate flex-grow">
+                            <i data-lucide="${icon}" size="16" class="text-blue-400"></i>
+                            <span class="truncate text-sm font-medium text-slate-700">${f.name}</span>
+                        </div>
+                        <button onclick="deleteFile('${f.path}', '${f.sha}')" class="delete-btn"><i data-lucide="trash-2" size="14"></i></button>
+                    `;
                     list.appendChild(div);
                 });
                 lucide.createIcons();
@@ -108,78 +118,63 @@
         }
 
         async function selectFile(path) {
-            updateStatus('syncing', 'Loading...');
+            updateStatus('syncing', 'Opening...');
+            const ext = path.split('.').pop().toLowerCase();
             try {
                 const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}?t=${Date.now()}`, { headers: getHeaders() });
                 const data = await res.json();
-                const content = decodeURIComponent(escape(atob(data.content)));
-                document.getElementById('editor').innerHTML = content;
-                currentFilePath = path; currentFileSha = data.sha;
+                const base64 = data.content.replace(/\s/g, '');
+                
+                if (ext === 'pdf') {
+                    const blob = await (await fetch(`data:application/pdf;base64,${base64}`)).blob();
+                    window.open(URL.createObjectURL(blob), '_blank');
+                    updateStatus('saved', 'PDF Opened');
+                } else if (ext === 'docx') {
+                    const arrayBuffer = Uint8Array.from(atob(base64), c => c.charCodeAt(0)).buffer;
+                    const result = await mammoth.convertToHtml({arrayBuffer: arrayBuffer});
+                    document.getElementById('editor').innerHTML = result.value;
+                    updateStatus('saved', 'DOCX Loaded');
+                } else {
+                    const content = decodeURIComponent(escape(atob(base64)));
+                    document.getElementById('editor').innerHTML = content;
+                    updateStatus('saved', 'Synced');
+                }
+
+                currentFilePath = path;
+                currentFileSha = data.sha;
                 document.getElementById('currentFileName').innerText = path;
-                lastSavedHTML = content; isDirty = false; updateStatus('saved', 'Synced');
+                isDirty = false;
                 closeSidebar();
             } catch (e) { updateStatus('unsaved', 'Load Failed'); }
         }
 
-        async function uploadImageFile(file) {
-            if (!currentFilePath) return alert("Please open a file first!");
+        async function handleUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            updateStatus('syncing', 'Uploading binary...');
             
-            const tempUrl = URL.createObjectURL(file);
-            const tempId = 'img-' + Date.now();
-            const imgHtml = `<img src="${tempUrl}" id="${tempId}" class="uploading" title="Uploading...">`;
-            document.execCommand('insertHTML', false, imgHtml);
-            isDirty = true;
-
-            try {
-                const img = new Image();
-                img.src = tempUrl;
-                await new Promise(resolve => img.onload = resolve);
-
-                const canvas = document.createElement('canvas');
-                const scale = Math.min(1, 1280 / Math.max(img.width, img.height));
-                canvas.width = img.width * scale; canvas.height = img.height * scale;
-                canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-                
-                const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.8));
-                const reader = new FileReader();
-                reader.readAsDataURL(blob);
-                
-                reader.onloadend = async () => {
-                    const base64 = reader.result.split(',')[1];
-                    // 改進：將圖片存入以檔名命名的子資料夾，避免混亂
-                    const fileFolder = currentFilePath.replace(/\.[^/.]+$/, "");
-                    const assetPath = `assets/${fileFolder}/${Date.now()}.jpg`;
-                    
-                    updateStatus('syncing', 'Uploading image...');
-                    const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${assetPath}`, {
-                        method: 'PUT', headers: getHeaders(),
-                        body: JSON.stringify({ message: `Upload asset for ${currentFilePath}`, content: base64 })
+            const reader = new FileReader();
+            reader.onload = async () => {
+                const base64 = reader.result.split(',')[1];
+                try {
+                    const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${file.name}`, {
+                        method: 'PUT',
+                        headers: getHeaders(),
+                        body: JSON.stringify({ message: `Upload ${file.name}`, content: base64 })
                     });
-
-                    if (res.ok) {
-                        const data = await res.json();
-                        const uploadedImg = document.getElementById(tempId);
-                        if (uploadedImg) {
-                            uploadedImg.src = data.content.download_url;
-                            uploadedImg.classList.remove('uploading');
-                            uploadedImg.removeAttribute('id');
-                            uploadedImg.removeAttribute('title');
-                            URL.revokeObjectURL(tempUrl);
-                            saveCurrentFile(); 
-                        }
-                    } else { throw new Error("Upload Failed"); }
-                };
-            } catch (e) {
-                const uploadedImg = document.getElementById(tempId);
-                if (uploadedImg) uploadedImg.remove();
-                alert("圖片上傳失敗。");
-            }
+                    if (res.ok) { syncFiles(); alert("File uploaded successfully!"); }
+                } catch (err) { alert("Upload failed"); }
+            };
+            reader.readAsDataURL(file);
         }
 
         async function saveCurrentFile() {
-            const html = document.getElementById('editor').innerHTML;
-            if (!currentFilePath || isSaving || (!isDirty && html === lastSavedHTML)) return;
+            const ext = currentFilePath.split('.').pop().toLowerCase();
+            // We only auto-save HTML or Text files. DOCX is view-only in this simple editor.
+            if (!currentFilePath || isSaving || !isDirty || (ext !== 'html' && ext !== 'txt')) return;
+            
             isSaving = true; updateStatus('syncing', 'Saving...');
+            const html = document.getElementById('editor').innerHTML;
             try {
                 const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentFilePath}`, {
                     method: 'PUT', headers: getHeaders(),
@@ -187,55 +182,51 @@
                 });
                 if (res.ok) {
                     const data = await res.json();
-                    currentFileSha = data.content.sha; lastSavedHTML = html; isDirty = false; updateStatus('saved', 'Saved');
-                    // runAssetCleanup(html); // 安全起見，關閉自動清理功能
+                    currentFileSha = data.content.sha; isDirty = false; updateStatus('saved', 'Saved');
                 }
             } catch (e) { updateStatus('unsaved', 'Save Error'); } finally { isSaving = false; }
         }
 
-        async function deleteFile(path, sha) {
-            if (!confirm(`Delete "${path}"? (Images in assets folder will be kept for safety)`)) return;
-            updateStatus('syncing', 'Deleting...');
-            try {
-                await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { 
-                    method: 'DELETE', headers: getHeaders(), 
-                    body: JSON.stringify({ message: 'Delete file', sha: sha }) 
+        // --- Standard Editor Functions ---
+        function handleImageSelect(e) { if (e.target.files[0]) uploadEditorImage(e.target.files[0]); e.target.value = ''; }
+        async function uploadEditorImage(file) {
+            if (!currentFilePath) return alert("Open a file first");
+            const reader = new FileReader();
+            reader.onload = async () => {
+                const base64 = reader.result.split(',')[1];
+                const assetPath = `assets/${Date.now()}.jpg`;
+                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${assetPath}`, {
+                    method: 'PUT', headers: getHeaders(),
+                    body: JSON.stringify({ message: 'Editor image', content: base64 })
                 });
-                if (currentFilePath === path) { document.getElementById('editor').innerHTML = ''; currentFilePath = ''; }
-                syncFiles();
-            } catch (e) { alert("Delete failed"); }
+                if (res.ok) {
+                    const data = await res.json();
+                    document.execCommand('insertHTML', false, `<img src="${data.content.download_url}">`);
+                    saveCurrentFile();
+                }
+            };
+            reader.readAsDataURL(file);
         }
 
-        function handleFileSelect(e) { if (e.target.files[0]) uploadImageFile(e.target.files[0]); e.target.value = ''; }
-        
+        async function deleteFile(path, sha) {
+            if (!confirm(`Delete ${path}?`)) return;
+            await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { 
+                method: 'DELETE', headers: getHeaders(), 
+                body: JSON.stringify({ message: 'Delete', sha: sha }) 
+            });
+            syncFiles();
+        }
+
         async function createNewFile() {
-            const name = prompt("Filename (e.g. note.html):"); if (!name) return;
-            currentFilePath = name; currentFileSha = ''; document.getElementById('editor').innerHTML = '<div>New...</div>';
-            isDirty = true; await saveCurrentFile(); syncFiles(); closeSidebar();
+            const name = prompt("Name (e.g., index.html):");
+            if (!name) return;
+            currentFilePath = name; 
+            document.getElementById('editor').innerHTML = '<div>Start typing...</div>';
+            isDirty = true; await saveCurrentFile(); syncFiles();
         }
 
         document.getElementById('editor').addEventListener('input', () => { if (!isDirty) { isDirty = true; updateStatus('unsaved', 'Unsaved'); } });
-        
-        // 修改後的 Paste 事件：過濾字體樣式並處理圖片
-        document.getElementById('editor').addEventListener('paste', e => {
-            const items = (e.clipboardData || e.originalEvent.clipboardData).items;
-            let isImage = false;
-            for (let item of items) {
-                if (item.type.indexOf('image') !== -1) {
-                    e.preventDefault();
-                    uploadImageFile(item.getAsFile());
-                    isImage = true;
-                }
-            }
-            // 如果不是貼上圖片，則強制以純文字格式貼上，移除新細明體等樣式
-            if (!isImage) {
-                e.preventDefault();
-                const text = (e.originalEvent || e).clipboardData.getData('text/plain');
-                document.execCommand('insertText', false, text);
-            }
-        });
-
-        setInterval(saveCurrentFile, 30000);
+        setInterval(saveCurrentFile, 15000);
         function updateStatus(type, text) { 
             const d = document.querySelector('.status-dot'); const t = document.querySelector('#statusText');
             if(d && t) { d.className = `status-dot status-${type}`; t.textContent = text; } 
