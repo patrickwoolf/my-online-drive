@@ -3,19 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>CloudDrive Editor (Safe Sync)</title>
+    <title>CloudDrive Pro (Multi-Format Support)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
         #scroll-container { height: calc(100vh - 120px); overflow-y: auto; -webkit-overflow-scrolling: touch; }
         #editor { min-height: 100%; padding: 1.5rem 1.5rem 15rem 1.5rem; outline: none; }
-        /* 強制編輯器內所有元素使用系統字體，覆蓋貼上的樣式 */
         #editor * { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif !important; }
         
         #sidebar { transition: all 0.3s ease; width: 280px; z-index: 50; flex-shrink: 0; background: white; border-right: 1px solid #e2e8f0; }
         .sidebar-closed { margin-left: -280px; }
         #overlay { display: none; }
         @media (max-width: 768px) { #sidebar { position: fixed; height: 100vh; } body.sidebar-active #overlay { display: block; position: fixed; inset: 0; background: rgba(0,0,0,0.3); z-index: 40; } }
+        
         .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
         .status-saved { background: #22c55e; }
         .status-unsaved { background: #ef4444; }
@@ -25,8 +25,12 @@
         img { display: block; margin: 10px 0; border-radius: 4px; max-width: 100%; height: auto; transition: opacity 0.3s; }
         img.uploading { opacity: 0.4; filter: blur(2px); cursor: wait; border: 2px dashed #3b82f6; }
         
+        /* 檔案名稱全顯示優化 */
+        .file-item { display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.75rem; border-radius: 0.5rem; cursor: pointer; transition: all 0.2s; border: 1px solid transparent; }
+        .file-item:hover { background-color: #eff6ff; border-color: #dbeafe; }
+        .file-name { word-break: break-all; white-space: normal; font-size: 0.875rem; line-height: 1.25rem; color: #334155; font-weight: 500; flex: 1; }
+        .delete-btn { opacity: 0; color: #ef4444; padding: 4px; transition: opacity 0.2s; border-radius: 4px; margin-top: -2px; }
         .file-item:hover .delete-btn { opacity: 1; }
-        .delete-btn { opacity: 0; color: #ef4444; padding: 4px; transition: opacity 0.2s; border-radius: 4px; }
         .delete-btn:hover { background: #fee2e2; }
     </style>
 </head>
@@ -53,29 +57,45 @@
         <aside id="sidebar" class="flex flex-col">
             <div class="p-4 flex justify-between items-center border-b bg-slate-50">
                 <span class="text-xs font-bold uppercase text-slate-500 tracking-wider">Files</span>
-                <button onclick="createNewFile()" class="p-1.5 text-blue-600 hover:bg-blue-100 rounded-md"><i data-lucide="file-plus" size="18"></i></button>
+                <div class="flex gap-1">
+                    <button onclick="document.getElementById('generalFileInput').click()" class="p-1.5 text-slate-600 hover:bg-slate-200 rounded-md" title="Upload File">
+                        <i data-lucide="upload-cloud" size="18"></i>
+                    </button>
+                    <button onclick="createNewFile()" class="p-1.5 text-blue-600 hover:bg-blue-100 rounded-md" title="New Note">
+                        <i data-lucide="file-plus" size="18"></i>
+                    </button>
+                </div>
+                <input type="file" id="generalFileInput" class="hidden" onchange="handleGeneralUpload(event)">
             </div>
-            <div id="fileList" class="flex-1 overflow-y-auto p-2 space-y-1"></div>
+            <div id="fileList" class="flex-1 overflow-y-auto p-2 space-y-1 text-sm"></div>
         </aside>
 
         <main class="flex-1 flex flex-col bg-white overflow-hidden w-full">
-            <div class="p-1 border-b bg-slate-50/50 flex items-center gap-1 overflow-x-auto shadow-inner">
+            <div id="editorToolbar" class="p-1 border-b bg-slate-50/50 flex items-center gap-1 overflow-x-auto shadow-inner">
                 <button onclick="exec('bold')" class="p-2 hover:bg-white rounded"><i data-lucide="bold" size="16"></i></button>
                 <button onclick="exec('italic')" class="p-2 hover:bg-white rounded"><i data-lucide="italic" size="16"></i></button>
                 <button onclick="insertTable()" class="p-2 text-slate-700 hover:bg-white rounded"><i data-lucide="table" size="18"></i></button>
                 <div class="w-px h-6 bg-slate-200 mx-1"></div>
-                <button onclick="document.getElementById('fileInput').click()" class="p-2 text-blue-600 hover:bg-white rounded"><i data-lucide="image-plus" size="18"></i></button>
-                <input type="file" id="fileInput" class="hidden" accept="image/*" onchange="handleFileSelect(event)">
+                <button onclick="document.getElementById('imgInput').click()" class="p-2 text-blue-600 hover:bg-white rounded" title="Insert Image">
+                    <i data-lucide="image-plus" size="18"></i>
+                </button>
+                <input type="file" id="imgInput" class="hidden" accept="image/*" onchange="handleImageSelect(event)">
                 <div class="ml-auto pr-2"><span id="currentFileName" class="text-xs font-medium text-slate-400 truncate max-w-[150px] block italic">No file selected</span></div>
             </div>
+            
             <div id="scroll-container">
                 <div id="editor" contenteditable="true" class="prose max-w-none focus:outline-none"></div>
+                <div id="nonEditableNotice" class="hidden h-full flex flex-col items-center justify-center text-slate-400 p-10 text-center">
+                    <i data-lucide="eye" size="48" class="mb-4 opacity-20"></i>
+                    <p>This file type cannot be edited online.<br>It has been opened or downloaded.</p>
+                </div>
             </div>
         </main>
     </div>
 
     <script>
         const REPO = 'patrickwoolf/my-online-drive';
+        const EDITABLE_EXT = ['html', 'txt', 'md', 'css', 'js', 'json'];
         let currentFilePath = '', currentFileSha = '', isDirty = false, isSaving = false, lastSavedHTML = '';
 
         document.addEventListener('DOMContentLoaded', () => {
@@ -95,16 +115,45 @@
                 const files = await res.json();
                 const list = document.getElementById('fileList');
                 list.innerHTML = '';
+                
                 files.forEach(f => {
                     if (f.type === 'dir' || f.name === 'assets') return;
+                    
+                    const ext = f.name.split('.').pop().toLowerCase();
+                    const isEditable = EDITABLE_EXT.includes(ext);
+                    const icon = isEditable ? 'file-text' : (ext === 'pdf' ? 'file-digit' : 'file');
+                    
                     const div = document.createElement('div');
-                    div.className = 'file-item flex justify-between items-center p-3 hover:bg-blue-50 rounded-md cursor-pointer transition-colors';
-                    div.innerHTML = `<div onclick="selectFile('${f.path}')" class="flex items-center gap-3 truncate flex-grow"><i data-lucide="file-text" size="16" class="text-blue-400"></i><span class="truncate text-sm font-medium text-slate-700">${f.name}</span></div><button onclick="deleteFile('${f.path}', '${f.sha}')" class="delete-btn"><i data-lucide="trash-2" size="14"></i></button>`;
+                    div.className = 'file-item';
+                    div.innerHTML = `
+                        <div onclick="handleFileClick('${f.path}', '${f.download_url}', ${isEditable})" class="flex items-start gap-3 flex-grow min-w-0">
+                            <i data-lucide="${icon}" size="18" class="${isEditable ? 'text-blue-500' : 'text-slate-400'} shrink-0 mt-0.5"></i>
+                            <span class="file-name">${f.name}</span>
+                        </div>
+                        <button onclick="event.stopPropagation(); deleteFile('${f.path}', '${f.sha}')" class="delete-btn">
+                            <i data-lucide="trash-2" size="14"></i>
+                        </button>`;
                     list.appendChild(div);
                 });
                 lucide.createIcons();
                 updateStatus('saved', 'Cloud Ready');
             } catch (err) { updateStatus('unsaved', 'Sync Error'); }
+        }
+
+        function handleFileClick(path, downloadUrl, isEditable) {
+            if (isEditable) {
+                selectFile(path);
+            } else {
+                const ext = path.split('.').pop().toLowerCase();
+                if (ext === 'pdf') {
+                    window.open(downloadUrl, '_blank');
+                } else {
+                    const link = document.createElement('a');
+                    link.href = downloadUrl;
+                    link.download = path.split('/').pop();
+                    link.click();
+                }
+            }
         }
 
         async function selectFile(path) {
@@ -113,7 +162,12 @@
                 const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}?t=${Date.now()}`, { headers: getHeaders() });
                 const data = await res.json();
                 const content = decodeURIComponent(escape(atob(data.content)));
+                
                 document.getElementById('editor').innerHTML = content;
+                document.getElementById('editor').style.display = 'block';
+                document.getElementById('editorToolbar').style.opacity = '1';
+                document.getElementById('nonEditableNotice').classList.add('hidden');
+                
                 currentFilePath = path; currentFileSha = data.sha;
                 document.getElementById('currentFileName').innerText = path;
                 lastSavedHTML = content; isDirty = false; updateStatus('saved', 'Synced');
@@ -121,59 +175,69 @@
             } catch (e) { updateStatus('unsaved', 'Load Failed'); }
         }
 
-        async function uploadImageFile(file) {
-            if (!currentFilePath) return alert("Please open a file first!");
+        // Sidebar 通用檔案上傳
+        async function handleGeneralUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            updateStatus('syncing', 'Uploading File...');
             
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onloadend = async () => {
+                const base64 = reader.result.split(',')[1];
+                try {
+                    const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${file.name}`, {
+                        method: 'PUT',
+                        headers: getHeaders(),
+                        body: JSON.stringify({ message: `Upload ${file.name}`, content: base64 })
+                    });
+                    if (res.ok) {
+                        updateStatus('saved', 'Upload Success');
+                        syncFiles();
+                    } else { alert("Upload failed. File might already exist."); }
+                } catch (e) { updateStatus('unsaved', 'Error'); }
+            };
+            e.target.value = '';
+        }
+
+        // 編輯器內的圖片選取
+        function handleImageSelect(e) { if (e.target.files[0]) uploadImageFile(e.target.files[0]); e.target.value = ''; }
+
+        async function uploadImageFile(file) {
+            if (!currentFilePath) return alert("Please open an HTML/Text file first!");
             const tempUrl = URL.createObjectURL(file);
             const tempId = 'img-' + Date.now();
-            const imgHtml = `<img src="${tempUrl}" id="${tempId}" class="uploading" title="Uploading...">`;
-            document.execCommand('insertHTML', false, imgHtml);
+            document.execCommand('insertHTML', false, `<img src="${tempUrl}" id="${tempId}" class="uploading" title="Uploading...">`);
             isDirty = true;
 
             try {
-                const img = new Image();
-                img.src = tempUrl;
-                await new Promise(resolve => img.onload = resolve);
-
+                const img = new Image(); img.src = tempUrl;
+                await new Promise(r => img.onload = r);
                 const canvas = document.createElement('canvas');
                 const scale = Math.min(1, 1280 / Math.max(img.width, img.height));
                 canvas.width = img.width * scale; canvas.height = img.height * scale;
                 canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-                
                 const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.8));
-                const reader = new FileReader();
-                reader.readAsDataURL(blob);
+                const reader = new FileReader(); reader.readAsDataURL(blob);
                 
                 reader.onloadend = async () => {
                     const base64 = reader.result.split(',')[1];
-                    // 改進：將圖片存入以檔名命名的子資料夾，避免混亂
-                    const fileFolder = currentFilePath.replace(/\.[^/.]+$/, "");
-                    const assetPath = `assets/${fileFolder}/${Date.now()}.jpg`;
+                    const folder = currentFilePath.replace(/\.[^/.]+$/, "");
+                    const assetPath = `assets/${folder}/${Date.now()}.jpg`;
                     
-                    updateStatus('syncing', 'Uploading image...');
                     const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${assetPath}`, {
                         method: 'PUT', headers: getHeaders(),
-                        body: JSON.stringify({ message: `Upload asset for ${currentFilePath}`, content: base64 })
+                        body: JSON.stringify({ message: `Asset for ${currentFilePath}`, content: base64 })
                     });
 
                     if (res.ok) {
                         const data = await res.json();
-                        const uploadedImg = document.getElementById(tempId);
-                        if (uploadedImg) {
-                            uploadedImg.src = data.content.download_url;
-                            uploadedImg.classList.remove('uploading');
-                            uploadedImg.removeAttribute('id');
-                            uploadedImg.removeAttribute('title');
-                            URL.revokeObjectURL(tempUrl);
-                            saveCurrentFile(); 
-                        }
-                    } else { throw new Error("Upload Failed"); }
+                        const el = document.getElementById(tempId);
+                        if (el) { el.src = data.content.download_url; el.className = ''; el.removeAttribute('id'); }
+                        saveCurrentFile();
+                    }
                 };
-            } catch (e) {
-                const uploadedImg = document.getElementById(tempId);
-                if (uploadedImg) uploadedImg.remove();
-                alert("圖片上傳失敗。");
-            }
+            } catch (e) { document.getElementById(tempId)?.remove(); }
         }
 
         async function saveCurrentFile() {
@@ -188,51 +252,45 @@
                 if (res.ok) {
                     const data = await res.json();
                     currentFileSha = data.content.sha; lastSavedHTML = html; isDirty = false; updateStatus('saved', 'Saved');
-                    // runAssetCleanup(html); // 安全起見，關閉自動清理功能
                 }
             } catch (e) { updateStatus('unsaved', 'Save Error'); } finally { isSaving = false; }
         }
 
         async function deleteFile(path, sha) {
-            if (!confirm(`Delete "${path}"? (Images in assets folder will be kept for safety)`)) return;
+            if (!confirm(`Delete "${path}"?`)) return;
             updateStatus('syncing', 'Deleting...');
             try {
                 await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { 
                     method: 'DELETE', headers: getHeaders(), 
-                    body: JSON.stringify({ message: 'Delete file', sha: sha }) 
+                    body: JSON.stringify({ message: 'Delete', sha: sha }) 
                 });
-                if (currentFilePath === path) { document.getElementById('editor').innerHTML = ''; currentFilePath = ''; }
+                if (currentFilePath === path) { 
+                    document.getElementById('editor').innerHTML = ''; 
+                    currentFilePath = ''; 
+                    document.getElementById('currentFileName').innerText = 'No file selected';
+                }
                 syncFiles();
             } catch (e) { alert("Delete failed"); }
         }
 
-        function handleFileSelect(e) { if (e.target.files[0]) uploadImageFile(e.target.files[0]); e.target.value = ''; }
-        
         async function createNewFile() {
             const name = prompt("Filename (e.g. note.html):"); if (!name) return;
             currentFilePath = name; currentFileSha = ''; document.getElementById('editor').innerHTML = '<div>New...</div>';
             isDirty = true; await saveCurrentFile(); syncFiles(); closeSidebar();
         }
 
+        // Utils
         document.getElementById('editor').addEventListener('input', () => { if (!isDirty) { isDirty = true; updateStatus('unsaved', 'Unsaved'); } });
-        
-        // 修改後的 Paste 事件：過濾字體樣式並處理圖片
         document.getElementById('editor').addEventListener('paste', e => {
             const items = (e.clipboardData || e.originalEvent.clipboardData).items;
-            let isImage = false;
             for (let item of items) {
                 if (item.type.indexOf('image') !== -1) {
-                    e.preventDefault();
-                    uploadImageFile(item.getAsFile());
-                    isImage = true;
+                    e.preventDefault(); uploadImageFile(item.getAsFile()); return;
                 }
             }
-            // 如果不是貼上圖片，則強制以純文字格式貼上，移除新細明體等樣式
-            if (!isImage) {
-                e.preventDefault();
-                const text = (e.originalEvent || e).clipboardData.getData('text/plain');
-                document.execCommand('insertText', false, text);
-            }
+            e.preventDefault();
+            const text = (e.originalEvent || e).clipboardData.getData('text/plain');
+            document.execCommand('insertText', false, text);
         });
 
         setInterval(saveCurrentFile, 30000);
