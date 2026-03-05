@@ -25,7 +25,6 @@
         img { display: block; margin: 10px 0; border-radius: 4px; max-width: 100%; height: auto; transition: opacity 0.3s; }
         img.uploading { opacity: 0.4; filter: blur(2px); cursor: wait; border: 2px dashed #3b82f6; }
         
-        /* 檔案名稱全顯示 */
         .file-item { display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.75rem; border-radius: 0.5rem; cursor: pointer; transition: all 0.2s; }
         .file-item:hover { background-color: #eff6ff; }
         .file-name { word-break: break-all; white-space: normal; font-size: 0.875rem; line-height: 1.25rem; color: #334155; font-weight: 500; flex: 1; }
@@ -112,18 +111,15 @@
                 
                 files.forEach(f => {
                     if (f.type === 'dir' || f.name === 'assets') return;
-                    
                     const fileName = f.name;
                     const hasExt = fileName.includes('.');
                     const ext = hasExt ? fileName.split('.').pop().toLowerCase() : '';
                     
-                    // 邏輯：沒有副檔名視為可編輯 (html)
+                    // 邏輯：無副檔名視為編輯檔案
                     const isEditable = !hasExt || ['html', 'txt', 'md', 'css', 'js'].includes(ext);
                     const isPdf = ext === 'pdf';
                     
-                    let icon = 'file';
-                    if (isEditable) icon = 'file-text';
-                    if (isPdf) icon = 'file-digit';
+                    let icon = isEditable ? 'file-text' : (isPdf ? 'file-digit' : 'file');
 
                     const div = document.createElement('div');
                     div.className = 'file-item';
@@ -146,19 +142,29 @@
             if (isEditable) {
                 selectFile(path);
             } else if (isPdf) {
-                updateStatus('syncing', 'Opening PDF...');
+                updateStatus('syncing', 'Preparing PDF...');
                 try {
-                    const res = await fetch(downloadUrl);
-                    const blob = await res.blob();
-                    const blobUrl = URL.createObjectURL(blob);
-                    window.open(blobUrl, '_blank');
-                } catch (e) { window.open(downloadUrl, '_blank'); }
-                updateStatus('saved', 'PDF Opened');
+                    // 修正：透過 fetch 取得 Blob 並在新標籤頁開啟
+                    const response = await fetch(downloadUrl);
+                    const blob = await response.blob();
+                    const pdfBlob = new Blob([blob], { type: 'application/pdf' });
+                    const blobUrl = URL.createObjectURL(pdfBlob);
+                    
+                    // 在新分頁開啟
+                    const newWindow = window.open(blobUrl, '_blank');
+                    if (!newWindow) {
+                        alert("請允許彈出視窗以瀏覽 PDF");
+                    }
+                    
+                    // 稍微延遲釋放 URL 以確保瀏覽器已載入
+                    setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+                    updateStatus('saved', 'PDF Opened');
+                } catch (e) {
+                    console.error(e);
+                    window.open(downloadUrl, '_blank');
+                }
             } else {
-                const link = document.createElement('a');
-                link.href = downloadUrl;
-                link.download = path.split('/').pop();
-                link.click();
+                window.location.href = downloadUrl;
             }
         }
 
@@ -262,7 +268,6 @@
             isDirty = true; await saveCurrentFile(); syncFiles(); closeSidebar();
         }
 
-        // Editor Listeners
         document.getElementById('editor').addEventListener('input', () => { if (!isDirty) { isDirty = true; updateStatus('unsaved', 'Unsaved'); } });
         document.getElementById('editor').addEventListener('paste', e => {
             const items = (e.clipboardData || e.originalEvent.clipboardData).items;
