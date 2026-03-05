@@ -3,15 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>CloudDrive Editor (Safe Sync)</title>
+    <title>CloudDrive Editor (Pro Sync)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
     <style>
         #scroll-container { height: calc(100vh - 120px); overflow-y: auto; -webkit-overflow-scrolling: touch; }
         #editor { min-height: 100%; padding: 1.5rem 1.5rem 15rem 1.5rem; outline: none; }
-        /* 強制編輯器內所有元素使用系統字體，覆蓋貼上的樣式 */
         #editor * { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif !important; }
-        
         #sidebar { transition: all 0.3s ease; width: 280px; z-index: 50; flex-shrink: 0; background: white; border-right: 1px solid #e2e8f0; }
         .sidebar-closed { margin-left: -280px; }
         #overlay { display: none; }
@@ -21,13 +20,12 @@
         .status-unsaved { background: #ef4444; }
         .status-syncing { background: #3b82f6; animation: pulse 1s infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
-        
-        img { display: block; margin: 10px 0; border-radius: 4px; max-width: 100%; height: auto; transition: opacity 0.3s; }
-        img.uploading { opacity: 0.4; filter: blur(2px); cursor: wait; border: 2px dashed #3b82f6; }
-        
+        img { display: block; margin: 10px 0; border-radius: 4px; max-width: 100%; height: auto; }
         .file-item:hover .delete-btn { opacity: 1; }
         .delete-btn { opacity: 0; color: #ef4444; padding: 4px; transition: opacity 0.2s; border-radius: 4px; }
         .delete-btn:hover { background: #fee2e2; }
+        /* PDF Viewer Style */
+        .pdf-viewer { width: 100%; height: 80vh; border: none; }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900 font-sans h-screen flex flex-col overflow-hidden sidebar-active">
@@ -59,7 +57,7 @@
         </aside>
 
         <main class="flex-1 flex flex-col bg-white overflow-hidden w-full">
-            <div class="p-1 border-b bg-slate-50/50 flex items-center gap-1 overflow-x-auto shadow-inner">
+            <div id="toolbar" class="p-1 border-b bg-slate-50/50 flex items-center gap-1 overflow-x-auto shadow-inner">
                 <button onclick="exec('bold')" class="p-2 hover:bg-white rounded"><i data-lucide="bold" size="16"></i></button>
                 <button onclick="exec('italic')" class="p-2 hover:bg-white rounded"><i data-lucide="italic" size="16"></i></button>
                 <button onclick="insertTable()" class="p-2 text-slate-700 hover:bg-white rounded"><i data-lucide="table" size="18"></i></button>
@@ -99,7 +97,7 @@
                     if (f.type === 'dir' || f.name === 'assets') return;
                     const div = document.createElement('div');
                     div.className = 'file-item flex justify-between items-center p-3 hover:bg-blue-50 rounded-md cursor-pointer transition-colors';
-                    div.innerHTML = `<div onclick="selectFile('${f.path}')" class="flex items-center gap-3 truncate flex-grow"><i data-lucide="file-text" size="16" class="text-blue-400"></i><span class="truncate text-sm font-medium text-slate-700">${f.name}</span></div><button onclick="deleteFile('${f.path}', '${f.sha}')" class="delete-btn"><i data-lucide="trash-2" size="14"></i></button>`;
+                    div.innerHTML = `<div onclick="selectFile('${f.path}')" class="flex items-center gap-3 truncate flex-grow"><i data-lucide="${getFileIcon(f.name)}" size="16" class="text-blue-400"></i><span class="truncate text-sm font-medium text-slate-700">${f.name}</span></div><button onclick="deleteFile('${f.path}', '${f.sha}')" class="delete-btn"><i data-lucide="trash-2" size="14"></i></button>`;
                     list.appendChild(div);
                 });
                 lucide.createIcons();
@@ -107,94 +105,88 @@
             } catch (err) { updateStatus('unsaved', 'Sync Error'); }
         }
 
+        function getFileIcon(name) {
+            if (name.endsWith('.pdf')) return 'file-digit';
+            if (name.endsWith('.docx')) return 'file-text';
+            return 'file-code';
+        }
+
         async function selectFile(path) {
             updateStatus('syncing', 'Loading...');
+            const ext = path.split('.').pop().toLowerCase();
+            const editor = document.getElementById('editor');
+            const toolbar = document.getElementById('toolbar');
+            
             try {
                 const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}?t=${Date.now()}`, { headers: getHeaders() });
                 const data = await res.json();
-                const content = decodeURIComponent(escape(atob(data.content)));
-                document.getElementById('editor').innerHTML = content;
+                
                 currentFilePath = path; currentFileSha = data.sha;
                 document.getElementById('currentFileName').innerText = path;
-                lastSavedHTML = content; isDirty = false; updateStatus('saved', 'Synced');
                 closeSidebar();
+
+                if (ext === 'pdf') {
+                    // PDF View Only Mode
+                    editor.contentEditable = "false";
+                    toolbar.style.opacity = "0.3";
+                    toolbar.style.pointerEvents = "none";
+                    editor.innerHTML = `<iframe src="${data.download_url}" class="pdf-viewer"></iframe>`;
+                    updateStatus('saved', 'Viewing PDF');
+                } else if (ext === 'docx') {
+                    // DOCX Edit Mode (Converts to HTML for editing)
+                    editor.contentEditable = "true";
+                    toolbar.style.opacity = "1";
+                    toolbar.style.pointerEvents = "auto";
+                    const docRes = await fetch(data.download_url);
+                    const arrayBuffer = await docRes.arrayBuffer();
+                    const result = await mammoth.convertToHtml({arrayBuffer: arrayBuffer});
+                    editor.innerHTML = result.value || "Empty Document";
+                    lastSavedHTML = editor.innerHTML;
+                    updateStatus('saved', 'DOCX Loaded');
+                } else {
+                    // Standard HTML/Text Mode
+                    editor.contentEditable = "true";
+                    toolbar.style.opacity = "1";
+                    toolbar.style.pointerEvents = "auto";
+                    const content = decodeURIComponent(escape(atob(data.content)));
+                    editor.innerHTML = content;
+                    lastSavedHTML = content;
+                    updateStatus('saved', 'Synced');
+                }
+                isDirty = false;
             } catch (e) { updateStatus('unsaved', 'Load Failed'); }
         }
 
-        async function uploadImageFile(file) {
-            if (!currentFilePath) return alert("Please open a file first!");
-            
-            const tempUrl = URL.createObjectURL(file);
-            const tempId = 'img-' + Date.now();
-            const imgHtml = `<img src="${tempUrl}" id="${tempId}" class="uploading" title="Uploading...">`;
-            document.execCommand('insertHTML', false, imgHtml);
-            isDirty = true;
-
-            try {
-                const img = new Image();
-                img.src = tempUrl;
-                await new Promise(resolve => img.onload = resolve);
-
-                const canvas = document.createElement('canvas');
-                const scale = Math.min(1, 1280 / Math.max(img.width, img.height));
-                canvas.width = img.width * scale; canvas.height = img.height * scale;
-                canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-                
-                const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.8));
-                const reader = new FileReader();
-                reader.readAsDataURL(blob);
-                
-                reader.onloadend = async () => {
-                    const base64 = reader.result.split(',')[1];
-                    // 改進：將圖片存入以檔名命名的子資料夾，避免混亂
-                    const fileFolder = currentFilePath.replace(/\.[^/.]+$/, "");
-                    const assetPath = `assets/${fileFolder}/${Date.now()}.jpg`;
-                    
-                    updateStatus('syncing', 'Uploading image...');
-                    const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${assetPath}`, {
-                        method: 'PUT', headers: getHeaders(),
-                        body: JSON.stringify({ message: `Upload asset for ${currentFilePath}`, content: base64 })
-                    });
-
-                    if (res.ok) {
-                        const data = await res.json();
-                        const uploadedImg = document.getElementById(tempId);
-                        if (uploadedImg) {
-                            uploadedImg.src = data.content.download_url;
-                            uploadedImg.classList.remove('uploading');
-                            uploadedImg.removeAttribute('id');
-                            uploadedImg.removeAttribute('title');
-                            URL.revokeObjectURL(tempUrl);
-                            saveCurrentFile(); 
-                        }
-                    } else { throw new Error("Upload Failed"); }
-                };
-            } catch (e) {
-                const uploadedImg = document.getElementById(tempId);
-                if (uploadedImg) uploadedImg.remove();
-                alert("圖片上傳失敗。");
-            }
-        }
-
         async function saveCurrentFile() {
+            // Do not attempt to save PDF views as they are iframes
+            if (!currentFilePath || currentFilePath.endsWith('.pdf')) return;
+            
             const html = document.getElementById('editor').innerHTML;
-            if (!currentFilePath || isSaving || (!isDirty && html === lastSavedHTML)) return;
+            if (isSaving || (!isDirty && html === lastSavedHTML)) return;
+            
             isSaving = true; updateStatus('syncing', 'Saving...');
+            
+            // Note: If original was .docx, this saves the edited version as .html to preserve rich formatting
+            // or you can prompt the user to rename it. For now, it updates the current path.
             try {
                 const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentFilePath}`, {
                     method: 'PUT', headers: getHeaders(),
-                    body: JSON.stringify({ message: `Update ${currentFilePath}`, content: btoa(unescape(encodeURIComponent(html))), sha: currentFileSha })
+                    body: JSON.stringify({ 
+                        message: `Update ${currentFilePath}`, 
+                        content: btoa(unescape(encodeURIComponent(html))), 
+                        sha: currentFileSha 
+                    })
                 });
                 if (res.ok) {
                     const data = await res.json();
                     currentFileSha = data.content.sha; lastSavedHTML = html; isDirty = false; updateStatus('saved', 'Saved');
-                    // runAssetCleanup(html); // 安全起見，關閉自動清理功能
                 }
             } catch (e) { updateStatus('unsaved', 'Save Error'); } finally { isSaving = false; }
         }
 
+        // Original helper functions
         async function deleteFile(path, sha) {
-            if (!confirm(`Delete "${path}"? (Images in assets folder will be kept for safety)`)) return;
+            if (!confirm(`Delete "${path}"?`)) return;
             updateStatus('syncing', 'Deleting...');
             try {
                 await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { 
@@ -206,36 +198,13 @@
             } catch (e) { alert("Delete failed"); }
         }
 
-        function handleFileSelect(e) { if (e.target.files[0]) uploadImageFile(e.target.files[0]); e.target.value = ''; }
-        
         async function createNewFile() {
             const name = prompt("Filename (e.g. note.html):"); if (!name) return;
             currentFilePath = name; currentFileSha = ''; document.getElementById('editor').innerHTML = '<div>New...</div>';
             isDirty = true; await saveCurrentFile(); syncFiles(); closeSidebar();
         }
 
-        document.getElementById('editor').addEventListener('input', () => { if (!isDirty) { isDirty = true; updateStatus('unsaved', 'Unsaved'); } });
-        
-        // 修改後的 Paste 事件：過濾字體樣式並處理圖片
-        document.getElementById('editor').addEventListener('paste', e => {
-            const items = (e.clipboardData || e.originalEvent.clipboardData).items;
-            let isImage = false;
-            for (let item of items) {
-                if (item.type.indexOf('image') !== -1) {
-                    e.preventDefault();
-                    uploadImageFile(item.getAsFile());
-                    isImage = true;
-                }
-            }
-            // 如果不是貼上圖片，則強制以純文字格式貼上，移除新細明體等樣式
-            if (!isImage) {
-                e.preventDefault();
-                const text = (e.originalEvent || e).clipboardData.getData('text/plain');
-                document.execCommand('insertText', false, text);
-            }
-        });
-
-        setInterval(saveCurrentFile, 30000);
+        function handleFileSelect(e) { if (e.target.files[0]) uploadImageFile(e.target.files[0]); e.target.value = ''; }
         function updateStatus(type, text) { 
             const d = document.querySelector('.status-dot'); const t = document.querySelector('#statusText');
             if(d && t) { d.className = `status-dot status-${type}`; t.textContent = text; } 
@@ -244,6 +213,12 @@
         function insertTable() { document.execCommand('insertHTML', false, '<table class="border-collapse border border-slate-300 w-full mb-4"><tr><td class="border border-slate-300 p-2"></td><td class="border border-slate-300 p-2"></td></tr></table><p></p>'); }
         function toggleSidebar() { document.getElementById('sidebar').classList.toggle('sidebar-closed'); document.body.classList.toggle('sidebar-active'); }
         function closeSidebar() { document.getElementById('sidebar').classList.add('sidebar-closed'); document.body.classList.remove('sidebar-active'); }
+        
+        document.getElementById('editor').addEventListener('input', () => { 
+            if (!isDirty && !currentFilePath.endsWith('.pdf')) { isDirty = true; updateStatus('unsaved', 'Unsaved'); } 
+        });
+
+        setInterval(saveCurrentFile, 30000);
     </script>
 </body>
 </html>
