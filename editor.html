@@ -34,19 +34,38 @@
         .status-unsaved { background: #ef4444; }
         .status-syncing { background: #3b82f6; animation: pulse 1s infinite; }
 
-        /* 檔案項目與刪除按鈕邏輯 */
-        .file-item { display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; border-radius: 0.5rem; cursor: pointer; transition: background 0.2s; position: relative; }
+        /* 檔案項目修復：允許長檔名完整顯示（換行） */
+        .file-item { 
+            display: flex; 
+            align-items: flex-start; /* 對齊頂部，防止長文字時圖示居中 */
+            gap: 0.75rem; 
+            padding: 0.75rem; 
+            border-radius: 0.5rem; 
+            cursor: pointer; 
+            transition: background 0.2s; 
+            position: relative; 
+            min-width: 0;
+        }
         .file-item:hover { background-color: #eff6ff; }
-        .file-name { word-break: break-all; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.875rem; color: #334155; font-weight: 500; flex: 1; }
         
-        /* 刪除按鈕預設隱藏，Hover 時顯示 */
+        .file-name { 
+            word-break: break-all; /* 遇到長單字強制斷行 */
+            white-space: normal;  /* 允許換行 */
+            font-size: 0.875rem; 
+            color: #334155; 
+            font-weight: 500; 
+            flex: 1; 
+            line-height: 1.25rem;
+        }
+        
         .delete-btn { 
             opacity: 0; 
             transition: opacity 0.2s, color 0.2s; 
             color: #94a3b8; 
             padding: 4px;
             border-radius: 4px;
-            shrink: 0;
+            flex-shrink: 0;
+            margin-top: -2px; /* 稍微往上調對齊第一行 */
         }
         .file-item:hover .delete-btn { opacity: 1; }
         .delete-btn:hover { color: #ef4444; background: #fee2e2; }
@@ -171,8 +190,8 @@
                     const div = document.createElement('div');
                     div.className = 'file-item';
                     div.innerHTML = `
-                        <div onclick="handleFileClick('${f.path}', '${f.download_url}', ${isEditable}, ${isPdf})" class="flex items-center gap-3 flex-1 min-w-0">
-                            <i data-lucide="${isEditable ? 'file-text' : (isPdf ? 'file-digit' : 'file')}" size="18" class="${isEditable ? 'text-blue-500' : 'text-slate-400'} shrink-0"></i>
+                        <div onclick="handleFileClick('${f.path}', '${f.download_url}', ${isEditable}, ${isPdf})" class="flex items-start gap-3 flex-1 min-w-0">
+                            <i data-lucide="${isEditable ? 'file-text' : (isPdf ? 'file-digit' : 'file')}" size="18" class="${isEditable ? 'text-blue-500' : 'text-slate-400'} shrink-0 mt-0.5"></i>
                             <span class="file-name">${f.name}</span>
                         </div>
                         <button onclick="event.stopPropagation(); deleteFile('${f.path}', '${f.sha}')" class="delete-btn" title="刪除檔案">
