@@ -6,6 +6,7 @@
     <title>CloudDrive</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
     <style>
         #scroll-container { height: calc(100vh - 120px); overflow-y: auto; -webkit-overflow-scrolling: touch; }
         #editor { min-height: 100%; padding: 1.5rem 1.5rem 15rem 1.5rem; outline: none; }
@@ -19,9 +20,10 @@
         .status-unsaved { background: #ef4444; }
         .status-syncing { background: #3b82f6; animation: pulse 1s infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+        img { display: block; margin: 10px 0; border-radius: 4px; max-width: 100%; height: auto; }
         .file-item:hover .action-btns { opacity: 1; }
         .action-btns { opacity: 0; transition: opacity 0.2s; display: flex; gap: 4px; }
-        .icon-btn { padding: 4px; border-radius: 4px; }
+        .icon-btn { padding: 4px; border-radius: 4px; transition: background 0.2s; }
         .btn-delete { color: #ef4444; } .btn-delete:hover { background: #fee2e2; }
         .btn-download { color: #3b82f6; } .btn-download:hover { background: #dbeafe; }
     </style>
@@ -31,16 +33,16 @@
     
     <header class="bg-white border-b p-2 shadow-sm z-20">
         <div class="flex justify-between items-center px-2 gap-4">
-            <div class="flex items-center gap-2">
+            <div class="flex items-center gap-2 shrink-0">
                 <button onclick="toggleSidebar()" class="p-2 hover:bg-slate-100 rounded-md"><i data-lucide="menu" size="20"></i></button>
                 <h1 class="text-md font-bold text-blue-600 flex items-center gap-1"><i data-lucide="cloud-cog" size="18"></i> CloudDrive</h1>
             </div>
-            <div class="flex items-center gap-2 flex-1 justify-end">
-                <input type="password" id="ghToken" placeholder="GitHub Token" class="w-full max-w-[120px] border rounded-md px-3 py-1.5 text-xs outline-none">
-                <div id="saveStatus" class="flex text-[10px] uppercase font-bold text-slate-400 items-center">
+            <div class="flex items-center gap-2 flex-1 justify-end max-w-2xl">
+                <input type="password" id="ghToken" placeholder="GitHub Token" class="w-full max-w-[120px] border rounded-md px-3 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-400">
+                <div id="saveStatus" class="flex text-[10px] uppercase font-bold text-slate-400 items-center shrink-0">
                     <span class="status-dot status-saved mr-1"></span><span id="statusText">Ready</span>
                 </div>
-                <button onclick="syncFiles()" class="bg-blue-600 text-white p-1.5 rounded-md hover:bg-blue-700"><i data-lucide="refresh-cw" size="16"></i></button>
+                <button onclick="syncFiles()" class="bg-blue-600 text-white p-1.5 rounded-md hover:bg-blue-700 shadow-sm"><i data-lucide="refresh-cw" size="16"></i></button>
             </div>
         </div>
     </header>
@@ -48,10 +50,10 @@
     <div class="flex flex-1 overflow-hidden">
         <aside id="sidebar" class="flex flex-col">
             <div class="p-4 flex justify-between items-center border-b bg-slate-50">
-                <span class="text-xs font-bold uppercase text-slate-500 tracking-wider">My Files</span>
+                <span class="text-xs font-bold uppercase text-slate-500 tracking-wider">Storage</span>
                 <div class="flex gap-1">
                     <button onclick="createNewFile()" title="New HTML" class="p-1.5 text-blue-600 hover:bg-blue-100 rounded-md"><i data-lucide="file-plus" size="18"></i></button>
-                    <button onclick="document.getElementById('uploadInput').click()" title="Upload Any File" class="p-1.5 text-emerald-600 hover:bg-emerald-100 rounded-md"><i data-lucide="upload-cloud" size="18"></i></button>
+                    <button onclick="document.getElementById('uploadInput').click()" title="Upload File" class="p-1.5 text-emerald-600 hover:bg-emerald-100 rounded-md"><i data-lucide="upload-cloud" size="18"></i></button>
                 </div>
             </div>
             <input type="file" id="uploadInput" class="hidden" onchange="handleUpload(event)">
@@ -66,7 +68,7 @@
                 <div class="w-px h-6 bg-slate-200 mx-1"></div>
                 <button onclick="document.getElementById('imgInput').click()" class="p-2 text-blue-600 hover:bg-white rounded"><i data-lucide="image-plus" size="18"></i></button>
                 <input type="file" id="imgInput" class="hidden" accept="image/*" onchange="handleImageSelect(event)">
-                <div class="ml-auto pr-2"><span id="currentFileName" class="text-xs font-medium text-slate-400 truncate max-w-[150px] italic">No file selected</span></div>
+                <div class="ml-auto pr-2"><span id="currentFileName" class="text-xs font-medium text-slate-400 truncate max-w-[150px] block italic">No file selected</span></div>
             </div>
             <div id="scroll-container">
                 <div id="editor" contenteditable="true" class="prose max-w-none focus:outline-none"></div>
@@ -98,60 +100,84 @@
                 files.forEach(f => {
                     if (f.type === 'dir' || f.name === 'assets') return;
                     const ext = f.name.split('.').pop().toLowerCase();
-                    const isBinary = ['pdf', 'docx', 'zip', 'jpg', 'png'].includes(ext);
-                    
+                    let icon = 'file-text';
+                    if(ext === 'pdf') icon = 'file-digit';
+                    if(ext === 'docx') icon = 'file-type-2';
+
                     const div = document.createElement('div');
                     div.className = 'file-item flex justify-between items-center p-3 hover:bg-blue-50 rounded-md cursor-pointer';
                     div.innerHTML = `
-                        <div onclick="handleFileClick('${f.path}', ${isBinary})" class="flex items-center gap-3 truncate flex-grow">
-                            <i data-lucide="${isBinary ? 'file-archive' : 'file-text'}" size="16" class="${isBinary ? 'text-emerald-500' : 'text-blue-400'}"></i>
-                            <span class="truncate text-sm font-medium ${isBinary ? 'text-slate-500' : 'text-slate-700'}">${f.name}</span>
+                        <div onclick="selectFile('${f.path}')" class="flex items-center gap-3 truncate flex-grow">
+                            <i data-lucide="${icon}" size="16" class="text-blue-400"></i>
+                            <span class="truncate text-sm font-medium text-slate-700">${f.name}</span>
                         </div>
                         <div class="action-btns">
-                            <button onclick="downloadFile('${f.path}')" class="icon-btn btn-download"><i data-lucide="download" size="14"></i></button>
-                            <button onclick="deleteFile('${f.path}', '${f.sha}')" class="icon-btn btn-delete"><i data-lucide="trash-2" size="14"></i></button>
+                            <button onclick="downloadFile('${f.path}')" class="icon-btn btn-download" title="Download original"><i data-lucide="download" size="14"></i></button>
+                            <button onclick="deleteFile('${f.path}', '${f.sha}')" class="icon-btn btn-delete" title="Delete"><i data-lucide="trash-2" size="14"></i></button>
                         </div>
                     `;
                     list.appendChild(div);
                 });
                 lucide.createIcons();
-                updateStatus('saved', 'Ready');
+                updateStatus('saved', 'Cloud Ready');
             } catch (err) { updateStatus('unsaved', 'Sync Error'); }
         }
 
-        function handleFileClick(path, isBinary) {
-            if (isBinary) {
-                downloadFile(path);
-            } else {
-                selectFile(path);
-            }
-        }
-
         async function downloadFile(path) {
-            updateStatus('syncing', 'Downloading...');
+            updateStatus('syncing', 'Preparing download...');
             try {
                 const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { headers: getHeaders() });
                 const data = await res.json();
-                const blob = await (await fetch(`data:application/octet-stream;base64,${data.content.replace(/\s/g, '')}`)).blob();
+                const base64 = data.content.replace(/\s/g, '');
+                
+                // Convert Base64 to Blob
+                const byteCharacters = atob(base64);
+                const byteNumbers = new Array(byteCharacters.length);
+                for (let i = 0; i < byteCharacters.length; i++) {
+                    byteNumbers[i] = byteCharacters.charCodeAt(i);
+                }
+                const byteArray = new Uint8Array(byteNumbers);
+                const blob = new Blob([byteArray], { type: 'application/octet-stream' });
+
+                // Trigger Download
                 const link = document.createElement('a');
                 link.href = URL.createObjectURL(blob);
                 link.download = path.split('/').pop();
+                document.body.appendChild(link);
                 link.click();
+                document.body.removeChild(link);
                 updateStatus('saved', 'Downloaded');
             } catch (e) { alert("Download failed"); }
         }
 
         async function selectFile(path) {
             updateStatus('syncing', 'Opening...');
+            const ext = path.split('.').pop().toLowerCase();
             try {
                 const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}?t=${Date.now()}`, { headers: getHeaders() });
                 const data = await res.json();
-                const content = decodeURIComponent(escape(atob(data.content.replace(/\s/g, ''))));
-                document.getElementById('editor').innerHTML = content;
-                currentFilePath = path; currentFileSha = data.sha;
+                const base64 = data.content.replace(/\s/g, '');
+                
+                if (ext === 'pdf') {
+                    const blob = await (await fetch(`data:application/pdf;base64,${base64}`)).blob();
+                    window.open(URL.createObjectURL(blob), '_blank');
+                    updateStatus('saved', 'PDF Opened');
+                } else if (ext === 'docx') {
+                    const arrayBuffer = Uint8Array.from(atob(base64), c => c.charCodeAt(0)).buffer;
+                    const result = await mammoth.convertToHtml({arrayBuffer: arrayBuffer});
+                    document.getElementById('editor').innerHTML = result.value;
+                    updateStatus('saved', 'DOCX Loaded');
+                } else {
+                    const content = decodeURIComponent(escape(atob(base64)));
+                    document.getElementById('editor').innerHTML = content;
+                    updateStatus('saved', 'Synced');
+                }
+
+                currentFilePath = path;
+                currentFileSha = data.sha;
                 document.getElementById('currentFileName').innerText = path;
-                isDirty = false; closeSidebar();
-                updateStatus('saved', 'Editor Ready');
+                isDirty = false;
+                closeSidebar();
             } catch (e) { updateStatus('unsaved', 'Load Failed'); }
         }
 
@@ -159,23 +185,26 @@
             const file = e.target.files[0];
             if (!file) return;
             updateStatus('syncing', 'Uploading...');
+            
             const reader = new FileReader();
             reader.onload = async () => {
                 const base64 = reader.result.split(',')[1];
-                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${file.name}`, {
-                    method: 'PUT', headers: getHeaders(),
-                    body: JSON.stringify({ message: `Upload ${file.name}`, content: base64 })
-                });
-                if (res.ok) { syncFiles(); updateStatus('saved', 'Uploaded'); }
+                try {
+                    const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${file.name}`, {
+                        method: 'PUT',
+                        headers: getHeaders(),
+                        body: JSON.stringify({ message: `Upload ${file.name}`, content: base64 })
+                    });
+                    if (res.ok) { syncFiles(); updateStatus('saved', 'Uploaded'); }
+                } catch (err) { alert("Upload failed"); }
             };
             reader.readAsDataURL(file);
         }
 
         async function saveCurrentFile() {
-            if (!currentFilePath || isSaving || !isDirty) return;
             const ext = currentFilePath.split('.').pop().toLowerCase();
-            if (['docx', 'pdf'].includes(ext)) return; // Protection
-
+            if (!currentFilePath || isSaving || !isDirty || (ext !== 'html' && ext !== 'txt')) return;
+            
             isSaving = true; updateStatus('syncing', 'Saving...');
             const html = document.getElementById('editor').innerHTML;
             try {
@@ -192,6 +221,7 @@
 
         async function deleteFile(path, sha) {
             if (!confirm(`Delete ${path}?`)) return;
+            updateStatus('syncing', 'Deleting...');
             await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { 
                 method: 'DELETE', headers: getHeaders(), 
                 body: JSON.stringify({ message: 'Delete', sha: sha }) 
@@ -200,23 +230,23 @@
         }
 
         async function createNewFile() {
-            const name = prompt("Filename (e.g. note.html):");
+            const name = prompt("Name (e.g., index.html):");
             if (!name) return;
             currentFilePath = name; 
-            document.getElementById('editor').innerHTML = '<div>New...</div>';
+            document.getElementById('editor').innerHTML = '<div>Start typing...</div>';
             isDirty = true; await saveCurrentFile(); syncFiles();
         }
 
         function handleImageSelect(e) { if (e.target.files[0]) uploadEditorImage(e.target.files[0]); e.target.value = ''; }
         async function uploadEditorImage(file) {
-            if (!currentFilePath) return alert("Open an HTML file first");
+            if (!currentFilePath) return alert("Open a file first");
             const reader = new FileReader();
             reader.onload = async () => {
                 const base64 = reader.result.split(',')[1];
                 const assetPath = `assets/${Date.now()}.jpg`;
                 const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${assetPath}`, {
                     method: 'PUT', headers: getHeaders(),
-                    body: JSON.stringify({ message: 'Image', content: base64 })
+                    body: JSON.stringify({ message: 'Editor image', content: base64 })
                 });
                 if (res.ok) {
                     const data = await res.json();
