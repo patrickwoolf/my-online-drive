@@ -13,10 +13,11 @@
             padding: 2rem; 
             outline: none; 
             background: white; 
-            margin: 0 auto;
+            margin: 0; /* 改為 0，避免置中干擾左上角對齊 */
             transition: transform 0.2s ease-in-out;
-            transform-origin: top center;
+            transform-origin: top left; /* 關鍵修正：固定左上角 */
             box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+            width: 100%; /* 確保縮放時容器寬度正確 */
         }
         .toolbar-scroll { display: flex; overflow-x: auto; white-space: nowrap; -ms-overflow-style: none; scrollbar-width: none; }
         .toolbar-scroll::-webkit-scrollbar { display: none; }
