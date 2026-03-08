@@ -109,10 +109,17 @@
         <aside id="sidebar" class="bg-white border-r flex flex-col shadow-xl md:shadow-none absolute md:relative h-full">
             <div class="p-4 flex justify-between items-center border-b bg-slate-50">
                 <span class="text-xs font-bold uppercase text-slate-500">Files</span>
-                <button onclick="createNewFile()" class="p-1.5 text-blue-600 hover:bg-blue-100 rounded-md">
-                    <i data-lucide="file-plus" size="18"></i>
-                </button>
+                <div class="flex gap-1">
+                    <button onclick="document.getElementById('anyFileInput').click()" class="p-1.5 text-blue-600 hover:bg-blue-100 rounded-md" title="上傳檔案">
+                        <i data-lucide="upload" size="18"></i>
+                    </button>
+                    <button onclick="createNewFile()" class="p-1.5 text-blue-600 hover:bg-blue-100 rounded-md" title="新增文件">
+                        <i data-lucide="file-plus" size="18"></i>
+                    </button>
+                </div>
             </div>
+            <input type="file" id="anyFileInput" class="hidden" onchange="uploadAnyFile(event)">
+            
             <div id="fileList" class="flex-1 overflow-y-auto p-2 space-y-1">
                 <div class="text-center py-4 text-slate-400 text-xs">Loading...</div>
             </div>
@@ -289,6 +296,35 @@
             const name = prompt("Filename:"); if (!name) return;
             currentFilePath = name; document.getElementById('editor').innerHTML = '<div>New Page</div>';
             await saveFile(); syncFiles();
+        }
+
+        // 新增的檔案上傳功能
+        async function uploadAnyFile(e) {
+            const file = e.target.files[0]; 
+            if (!file) return;
+            
+            updateStatus('syncing', 'Uploading...');
+            const reader = new FileReader(); 
+            reader.readAsDataURL(file);
+            reader.onload = async () => {
+                const base64 = reader.result.split(',')[1];
+                try {
+                    const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${file.name}`, {
+                        method: 'PUT', 
+                        headers: getHeaders(), 
+                        body: JSON.stringify({ message: `Upload file: ${file.name}`, content: base64 })
+                    });
+                    if (res.ok) {
+                        updateStatus('saved', 'Uploaded');
+                        syncFiles(); // 上傳成功後重新載入檔案列表
+                    } else {
+                        updateStatus('unsaved', 'Upload Failed');
+                    }
+                } catch(err) {
+                    updateStatus('unsaved', 'Upload Error');
+                }
+            };
+            e.target.value = ''; // 重置 input，允許重複上傳相同名稱的檔案
         }
 
         function updateStatus(s, t) { document.querySelector('.status-dot').className = `status-dot status-${s} mr-1`; document.getElementById('statusText').innerText = t; }
