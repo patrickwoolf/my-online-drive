@@ -13,24 +13,33 @@
             padding: 2rem; 
             outline: none; 
             background: white; 
-            margin: 0; /* 改為 0，避免置中干擾左上角對齊 */
+            margin: 0; 
             transition: transform 0.2s ease-in-out;
-            transform-origin: top left; /* 關鍵修正：固定左上角 */
+            transform-origin: top left; 
             box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
-            width: 100%; /* 確保縮放時容器寬度正確 */
+            width: 100%; 
         }
 
         #editor * {
             font-family: inherit !important;
-            font-size: 1rem !important; /* 或者你想要的固定大小 */
-            color: #334155 !important;  /* 統一文字顏色 */
+            font-size: 1rem !important;
+            color: #334155 !important; 
             background-color: transparent !important;
             line-height: 1.5 !important;
         }
         
-        /* 保持表格與圖片的正常顯示 */
-        #editor img, #editor table, #editor td {
+        /* 保持表格正常顯示 */
+        #editor table, #editor td {
             all: revert; 
+        }
+
+        /* 關鍵修正：圖片顯示最寬不超過編輯器寬度，且高度自適應 */
+        #editor img {
+            max-width: 100%;
+            height: auto;
+            display: block;
+            margin: 0.5rem 0;
+            all: revert; /* 允許瀏覽器預設的 img 表現 */
         }
         
         .toolbar-scroll { display: flex; overflow-x: auto; white-space: nowrap; -ms-overflow-style: none; scrollbar-width: none; }
@@ -268,7 +277,6 @@
             document.getElementById('zoomPercent').innerText = `${Math.round(zoomLevel * 100)}%`;
         }
 
-        // 共用的上傳圖片邏輯
         async function processImageUpload(file) {
             if (!currentFilePath) {
                 alert("請先開啟或建立一個檔案以儲存圖片！");
@@ -358,12 +366,11 @@
         const editor = document.getElementById('editor');
         editor.addEventListener('input', () => { isDirty = true; updateStatus('unsaved', 'Unsaved'); });
         
-        // 新增：攔截貼上事件，處理圖片貼上
         editor.addEventListener('paste', (e) => {
             const items = (e.clipboardData || e.originalEvent.clipboardData).items;
             for (let item of items) {
                 if (item.kind === 'file' && item.type.startsWith('image/')) {
-                    e.preventDefault(); // 阻止瀏覽器預設轉成 base64 貼上
+                    e.preventDefault(); 
                     const file = item.getAsFile();
                     processImageUpload(file);
                 }
