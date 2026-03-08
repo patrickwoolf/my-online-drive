@@ -34,10 +34,9 @@
         .status-unsaved { background: #ef4444; }
         .status-syncing { background: #3b82f6; animation: pulse 1s infinite; }
 
-        /* 檔案項目修復：允許長檔名完整顯示（換行） */
         .file-item { 
             display: flex; 
-            align-items: flex-start; /* 對齊頂部，防止長文字時圖示居中 */
+            align-items: flex-start;
             gap: 0.75rem; 
             padding: 0.75rem; 
             border-radius: 0.5rem; 
@@ -49,8 +48,8 @@
         .file-item:hover { background-color: #eff6ff; }
         
         .file-name { 
-            word-break: break-all; /* 遇到長單字強制斷行 */
-            white-space: normal;  /* 允許換行 */
+            word-break: break-all;
+            white-space: normal;
             font-size: 0.875rem; 
             color: #334155; 
             font-weight: 500; 
@@ -65,7 +64,7 @@
             padding: 4px;
             border-radius: 4px;
             flex-shrink: 0;
-            margin-top: -2px; /* 稍微往上調對齊第一行 */
+            margin-top: -2px;
         }
         .file-item:hover .delete-btn { opacity: 1; }
         .delete-btn:hover { color: #ef4444; background: #fee2e2; }
@@ -254,11 +253,16 @@
             document.getElementById('zoomPercent').innerText = `${Math.round(zoomLevel * 100)}%`;
         }
 
-        async function handleImageSelect(e) {
-            const file = e.target.files[0]; if (!file || !currentFilePath) return;
+        // 共用的上傳圖片邏輯
+        async function processImageUpload(file) {
+            if (!currentFilePath) {
+                alert("請先開啟或建立一個檔案以儲存圖片！");
+                return;
+            }
             const tempId = 'img-' + Date.now();
             document.execCommand('insertHTML', false, `<img src="${URL.createObjectURL(file)}" id="${tempId}" class="uploading">`);
-            const reader = new FileReader(); reader.readAsDataURL(file);
+            const reader = new FileReader(); 
+            reader.readAsDataURL(file);
             reader.onload = async () => {
                 const base64 = reader.result.split(',')[1];
                 const res = await fetch(`https://api.github.com/repos/${REPO}/contents/assets/${currentFilePath.split('.')[0]}/${Date.now()}.jpg`, {
@@ -271,6 +275,12 @@
                     saveFile();
                 }
             };
+        }
+
+        async function handleImageSelect(e) {
+            const file = e.target.files[0]; 
+            if (file) processImageUpload(file);
+            e.target.value = '';
         }
 
         async function saveFile() {
@@ -298,7 +308,6 @@
             await saveFile(); syncFiles();
         }
 
-        // 新增的檔案上傳功能
         async function uploadAnyFile(e) {
             const file = e.target.files[0]; 
             if (!file) return;
@@ -316,7 +325,7 @@
                     });
                     if (res.ok) {
                         updateStatus('saved', 'Uploaded');
-                        syncFiles(); // 上傳成功後重新載入檔案列表
+                        syncFiles();
                     } else {
                         updateStatus('unsaved', 'Upload Failed');
                     }
@@ -324,13 +333,28 @@
                     updateStatus('unsaved', 'Upload Error');
                 }
             };
-            e.target.value = ''; // 重置 input，允許重複上傳相同名稱的檔案
+            e.target.value = '';
         }
 
         function updateStatus(s, t) { document.querySelector('.status-dot').className = `status-dot status-${s} mr-1`; document.getElementById('statusText').innerText = t; }
         function toggleSidebar() { document.getElementById('sidebar').classList.toggle('sidebar-closed'); document.body.classList.toggle('sidebar-active'); }
         function exec(c) { document.execCommand(c, false, null); }
-        document.getElementById('editor').addEventListener('input', () => { isDirty = true; updateStatus('unsaved', 'Unsaved'); });
+        
+        const editor = document.getElementById('editor');
+        editor.addEventListener('input', () => { isDirty = true; updateStatus('unsaved', 'Unsaved'); });
+        
+        // 新增：攔截貼上事件，處理圖片貼上
+        editor.addEventListener('paste', (e) => {
+            const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+            for (let item of items) {
+                if (item.kind === 'file' && item.type.startsWith('image/')) {
+                    e.preventDefault(); // 阻止瀏覽器預設轉成 base64 貼上
+                    const file = item.getAsFile();
+                    processImageUpload(file);
+                }
+            }
+        });
+
         setInterval(() => { if (isDirty) saveFile(); }, 10000);
     </script>
 </body>
