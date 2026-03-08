@@ -28,18 +28,16 @@
             line-height: 1.5 !important;
         }
         
-        /* 保持表格正常顯示 */
-        #editor table, #editor td {
-            all: revert; 
-        }
+        #editor table, #editor td { all: revert; }
 
-        /* 關鍵修正：圖片顯示最寬不超過編輯器寬度，且高度自適應 */
+        /* 關鍵修正：圖片永遠不超過螢幕寬度 (100vw) */
+        /* 使用 calc(100vw / var(--zoom, 1)) 來抵消編輯器 scale 的影響 */
         #editor img {
-            max-width: 100%;
-            height: auto;
+            max-width: calc(100vw / var(--zoom, 1)) !important;
+            height: auto !important;
             display: block;
             margin: 0.5rem 0;
-            all: revert; /* 允許瀏覽器預設的 img 表現 */
+            object-fit: contain;
         }
         
         .toolbar-scroll { display: flex; overflow-x: auto; white-space: nowrap; -ms-overflow-style: none; scrollbar-width: none; }
@@ -58,38 +56,10 @@
         .status-unsaved { background: #ef4444; }
         .status-syncing { background: #3b82f6; animation: pulse 1s infinite; }
 
-        .file-item { 
-            display: flex; 
-            align-items: flex-start;
-            gap: 0.75rem; 
-            padding: 0.75rem; 
-            border-radius: 0.5rem; 
-            cursor: pointer; 
-            transition: background 0.2s; 
-            position: relative; 
-            min-width: 0;
-        }
+        .file-item { display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.75rem; border-radius: 0.5rem; cursor: pointer; transition: background 0.2s; position: relative; min-width: 0; }
         .file-item:hover { background-color: #eff6ff; }
-        
-        .file-name { 
-            word-break: break-all;
-            white-space: normal;
-            font-size: 0.875rem; 
-            color: #334155; 
-            font-weight: 500; 
-            flex: 1; 
-            line-height: 1.25rem;
-        }
-        
-        .delete-btn { 
-            opacity: 0; 
-            transition: opacity 0.2s, color 0.2s; 
-            color: #94a3b8; 
-            padding: 4px;
-            border-radius: 4px;
-            flex-shrink: 0;
-            margin-top: -2px;
-        }
+        .file-name { word-break: break-all; white-space: normal; font-size: 0.875rem; color: #334155; font-weight: 500; flex: 1; line-height: 1.25rem; }
+        .delete-btn { opacity: 0; transition: opacity 0.2s, color 0.2s; color: #94a3b8; padding: 4px; border-radius: 4px; flex-shrink: 0; margin-top: -2px; }
         .file-item:hover .delete-btn { opacity: 1; }
         .delete-btn:hover { color: #ef4444; background: #fee2e2; }
         
@@ -115,12 +85,10 @@
             <div class="flex items-center gap-2 flex-1 justify-end max-w-2xl">
                 <input type="password" id="ghToken" placeholder="GitHub Token" 
                        class="w-full max-w-[120px] sm:max-w-[240px] border rounded-md px-3 py-1.5 text-xs focus:ring-2 focus:ring-blue-400 outline-none bg-slate-50 transition-all">
-                
                 <div id="saveStatus" class="flex text-[10px] uppercase font-bold text-slate-400 items-center shrink-0">
                     <span class="status-dot status-saved mr-1"></span> 
                     <span id="statusText" class="hidden md:inline">Ready</span>
                 </div>
-
                 <button onclick="syncFiles()" class="bg-blue-600 text-white p-1.5 rounded-md shrink-0 hover:bg-blue-700 active:scale-95 transition-all">
                     <i data-lucide="refresh-cw" size="16"></i>
                 </button>
@@ -142,7 +110,6 @@
                 </div>
             </div>
             <input type="file" id="anyFileInput" class="hidden" onchange="uploadAnyFile(event)">
-            
             <div id="fileList" class="flex-1 overflow-y-auto p-2 space-y-1">
                 <div class="text-center py-4 text-slate-400 text-xs">Loading...</div>
             </div>
@@ -153,10 +120,7 @@
                 <button onclick="exec('bold')" class="p-2 min-w-[40px] hover:bg-white rounded"><i data-lucide="bold" size="16"></i></button>
                 <button onclick="exec('italic')" class="p-2 min-w-[40px] hover:bg-white rounded"><i data-lucide="italic" size="16"></i></button>
                 <div class="h-6 w-px bg-slate-300 mx-1"></div>
-                
-                <button onclick="insertTable()" class="p-2 min-w-[40px] text-slate-700 hover:bg-white rounded" title="插入表格">
-                    <i data-lucide="table" size="18"></i>
-                </button>
+                <button onclick="insertTable()" class="p-2 min-w-[40px] text-slate-700 hover:bg-white rounded" title="插入表格"><i data-lucide="table" size="18"></i></button>
                 
                 <div class="grid grid-cols-3 gap-px bg-slate-300 border border-slate-300 rounded overflow-hidden mx-1 shrink-0">
                     <button onclick="tableAction('addRowAbove')" class="bg-white p-1.5 hover:bg-blue-50"><i data-lucide="arrow-up-to-line" size="14" class="text-blue-600"></i></button>
@@ -197,6 +161,7 @@
             lucide.createIcons();
             const tk = localStorage.getItem('gh_token');
             if (tk) { document.getElementById('ghToken').value = tk; syncFiles(); }
+            applyZoom(); // 初始化縮放變數
         });
 
         const getHeaders = () => ({ 'Authorization': `token ${document.getElementById('ghToken').value}`, 'Accept': 'application/vnd.github.v3+json' });
@@ -216,7 +181,6 @@
                     const ext = hasExt ? f.name.split('.').pop().toLowerCase() : '';
                     const isEditable = !hasExt || ['html', 'txt', 'md'].includes(ext);
                     const isPdf = ext === 'pdf';
-                    
                     const div = document.createElement('div');
                     div.className = 'file-item';
                     div.innerHTML = `
@@ -224,9 +188,7 @@
                             <i data-lucide="${isEditable ? 'file-text' : (isPdf ? 'file-digit' : 'file')}" size="18" class="${isEditable ? 'text-blue-500' : 'text-slate-400'} shrink-0 mt-0.5"></i>
                             <span class="file-name">${f.name}</span>
                         </div>
-                        <button onclick="event.stopPropagation(); deleteFile('${f.path}', '${f.sha}')" class="delete-btn" title="刪除檔案">
-                            <i data-lucide="trash-2" size="14"></i>
-                        </button>`;
+                        <button onclick="event.stopPropagation(); deleteFile('${f.path}', '${f.sha}')" class="delete-btn"><i data-lucide="trash-2" size="14"></i></button>`;
                     list.appendChild(div);
                 });
                 lucide.createIcons();
@@ -270,18 +232,18 @@
             isDirty = true;
         }
 
+        // 修改後的縮放邏輯：將 zoomLevel 傳遞給 CSS 變數
         function changeZoom(delta) { zoomLevel = Math.min(Math.max(0.5, zoomLevel + delta), 2.0); applyZoom(); }
         function resetZoom() { zoomLevel = 1.0; applyZoom(); }
         function applyZoom() {
-            document.getElementById('editor').style.transform = `scale(${zoomLevel})`;
+            const editorEl = document.getElementById('editor');
+            editorEl.style.transform = `scale(${zoomLevel})`;
+            editorEl.style.setProperty('--zoom', zoomLevel); // 關鍵：更新 CSS 變數
             document.getElementById('zoomPercent').innerText = `${Math.round(zoomLevel * 100)}%`;
         }
 
         async function processImageUpload(file) {
-            if (!currentFilePath) {
-                alert("請先開啟或建立一個檔案以儲存圖片！");
-                return;
-            }
+            if (!currentFilePath) { alert("請先開啟或建立一個檔案！"); return; }
             const tempId = 'img-' + Date.now();
             document.execCommand('insertHTML', false, `<img src="${URL.createObjectURL(file)}" id="${tempId}" class="uploading">`);
             const reader = new FileReader(); 
@@ -300,11 +262,7 @@
             };
         }
 
-        async function handleImageSelect(e) {
-            const file = e.target.files[0]; 
-            if (file) processImageUpload(file);
-            e.target.value = '';
-        }
+        async function handleImageSelect(e) { const file = e.target.files[0]; if (file) processImageUpload(file); e.target.value = ''; }
 
         async function saveFile() {
             if (!currentFilePath || isSaving) return;
@@ -319,9 +277,7 @@
 
         async function deleteFile(path, sha) {
             if (!confirm(`確定刪除 ${path}？`)) return;
-            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, {
-                method: 'DELETE', headers: getHeaders(), body: JSON.stringify({ message: 'delete', sha: sha })
-            });
+            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { method: 'DELETE', headers: getHeaders(), body: JSON.stringify({ message: 'delete', sha: sha }) });
             if (res.ok) { if (currentFilePath === path) { document.getElementById('editor').innerHTML = ''; currentFilePath = ''; } syncFiles(); }
         }
 
@@ -332,29 +288,16 @@
         }
 
         async function uploadAnyFile(e) {
-            const file = e.target.files[0]; 
-            if (!file) return;
-            
+            const file = e.target.files[0]; if (!file) return;
             updateStatus('syncing', 'Uploading...');
             const reader = new FileReader(); 
             reader.readAsDataURL(file);
             reader.onload = async () => {
                 const base64 = reader.result.split(',')[1];
-                try {
-                    const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${file.name}`, {
-                        method: 'PUT', 
-                        headers: getHeaders(), 
-                        body: JSON.stringify({ message: `Upload file: ${file.name}`, content: base64 })
-                    });
-                    if (res.ok) {
-                        updateStatus('saved', 'Uploaded');
-                        syncFiles();
-                    } else {
-                        updateStatus('unsaved', 'Upload Failed');
-                    }
-                } catch(err) {
-                    updateStatus('unsaved', 'Upload Error');
-                }
+                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${file.name}`, {
+                    method: 'PUT', headers: getHeaders(), body: JSON.stringify({ message: `Upload file: ${file.name}`, content: base64 })
+                });
+                if (res.ok) { updateStatus('saved', 'Uploaded'); syncFiles(); } else { updateStatus('unsaved', 'Upload Failed'); }
             };
             e.target.value = '';
         }
@@ -365,14 +308,12 @@
         
         const editor = document.getElementById('editor');
         editor.addEventListener('input', () => { isDirty = true; updateStatus('unsaved', 'Unsaved'); });
-        
         editor.addEventListener('paste', (e) => {
             const items = (e.clipboardData || e.originalEvent.clipboardData).items;
             for (let item of items) {
                 if (item.kind === 'file' && item.type.startsWith('image/')) {
                     e.preventDefault(); 
-                    const file = item.getAsFile();
-                    processImageUpload(file);
+                    processImageUpload(item.getAsFile());
                 }
             }
         });
