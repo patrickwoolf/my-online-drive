@@ -200,16 +200,13 @@
                     const div = document.createElement('div');
                     div.className = 'file-item';
                     
-                    div.onclick = (e) => { 
+                    div.onclick = (e) => {
                         if (e.target.closest('.action-btns')) return;
-                        
                         if (isDir) {
                             navigateTo(f.path);
-                        } else if (isEditable) {
-                            handleFileClick(f.path);
                         } else {
-                            // 其他檔案預設行為
-                            window.open(f.download_url, '_blank');
+                            // 統一呼叫，傳入所有必要資訊
+                            handleFileClick(f.path, f.download_url, isEditable, isPdf);
                         }
                     };
         
@@ -243,18 +240,25 @@
         async function handleFileClick(path, url, isEditable, isPdf) {
             if (isEditable) {
                 updateStatus('syncing', 'Loading...');
-                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}?t=${Date.now()}`, { headers: getHeaders() });
-                const data = await res.json();
-                document.getElementById('editor').innerHTML = decodeURIComponent(escape(atob(data.content)));
-                currentFilePath = path; currentFileSha = data.sha;
-                document.getElementById('currentFileName').innerText = path;
-                isDirty = false; updateStatus('saved', 'Opened');
-                if (window.innerWidth < 768) toggleSidebar();
-            } else if (isPdf) {
-                const res = await fetch(url);
-                const blob = await res.blob();
-                window.open(URL.createObjectURL(new Blob([blob], {type: 'application/pdf'})), '_blank');
-            } else { window.open(url, '_blank'); }
+                try {
+                    const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}?t=${Date.now()}`, { headers: getHeaders() });
+                    const data = await res.json();
+                    // 使用 try-catch 避免解碼失敗
+                    document.getElementById('editor').innerHTML = decodeURIComponent(escape(atob(data.content)));
+                    currentFilePath = path; 
+                    currentFileSha = data.sha;
+                    document.getElementById('currentFileName').innerText = path;
+                    isDirty = false; 
+                    updateStatus('saved', 'Opened');
+                    if (window.innerWidth < 768) toggleSidebar();
+                } catch (e) {
+                    updateStatus('unsaved', 'Load Error');
+                }
+            } else {
+                // PDF 或其他檔案直接開啟 download_url
+                // 這是最保險的做法，能利用瀏覽器內建的 PDF 閱讀器
+                window.open(url, '_blank');
+            }
         }
 
 
