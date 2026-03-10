@@ -21,7 +21,7 @@
         .status-unsaved { background: #ef4444; }
         .status-syncing { background: #3b82f6; animation: pulse 1s infinite; }
         
-        /* 檔案項目 */
+        /* 檔案項目樣式 */
         .file-item { 
             display: flex; 
             align-items: center; 
@@ -30,45 +30,43 @@
             border-radius: 0.5rem; 
             cursor: pointer; 
             transition: background 0.2s; 
-            position: relative; /* 為了讓按鈕絕對定位 */
-            overflow: hidden;
+            position: relative; 
+            overflow: hidden; /* 確保檔名不超出外框 */
         }
         .file-item:hover { background-color: #eff6ff; }
+        
+        /* 核心修改：完整顯示文字，不使用點點縮寫 */
         .file-name { 
             font-size: 0.875rem; 
             color: #334155; 
             font-weight: 500; 
             flex: 1; 
-            white-space: nowrap; 
-            overflow: hidden; 
-            text-overflow: ellipsis; 
-            padding-right: 20px; /* 預留一點空間給按鈕感應 */
+            white-space: nowrap; /* 強制一行 */
+            overflow: hidden;    /* 隱藏超出部分 */
+            text-overflow: clip; /* 不使用點點 ... */
         }
         
-        /* 按鈕組：Hover 時擋住文字 */
+        /* 按鈕組：Hover 時直接蓋在文字上方 */
         .action-btns { 
             display: none; 
             position: absolute; 
-            right: 0.5rem; 
-            top: 50%; 
-            transform: translateY(-50%);
-            background: #eff6ff; /* 與 hover 背景色相同 */
-            box-shadow: -10px 0 10px #eff6ff; /* 邊緣淡化遮擋效果 */
-            padding-left: 8px;
+            right: 0; 
+            top: 0;
+            bottom: 0;
+            background: #eff6ff; /* 與 hover 背景色一致 */
+            padding: 0 0.5rem;
+            align-items: center;
             gap: 4px;
+            box-shadow: -15px 0 15px #eff6ff; /* 增加左側陰影讓文字銜接自然點 */
         }
         .file-item:hover .action-btns { display: flex; }
         
         .icon-btn { color: #94a3b8; padding: 4px; border-radius: 4px; transition: all 0.2s; }
         .move-btn:hover { color: #3b82f6; background: #dbeafe; }
         .delete-btn:hover { color: #ef4444; background: #fee2e2; }
-
-        img.uploading { opacity: 0.4; filter: blur(2px); border: 2px dashed #3b82f6; }
     </style>
 </head>
-<body class="bg-slate-50 text-slate-900 font-sans h-screen flex flex-col overflow-hidden" ondragover="event.preventDefault()" ondrop="handleGlobalDrop(event)">
-    <div id="overlay" onclick="toggleSidebar()"></div>
-
+<body class="bg-slate-50 text-slate-900 font-sans h-screen flex flex-col overflow-hidden">
     <header class="bg-white border-b p-2 shadow-sm z-20">
         <div class="flex justify-between items-center px-2 gap-4">
             <div class="flex items-center gap-2 shrink-0">
@@ -78,7 +76,7 @@
                 </h1>
             </div>
             <div class="flex items-center gap-2 flex-1 justify-end max-w-2xl">
-                <input type="password" id="ghToken" placeholder="GitHub Token" class="w-full max-w-[120px] sm:max-w-[240px] border rounded-md px-3 py-1.5 text-xs focus:ring-2 focus:ring-blue-400 outline-none bg-slate-50 transition-all">
+                <input type="password" id="ghToken" placeholder="GitHub Token" class="w-full max-w-[120px] sm:max-w-[240px] border rounded-md px-3 py-1.5 text-xs outline-none bg-slate-50 transition-all">
                 <div id="saveStatus" class="flex text-[10px] uppercase font-bold text-slate-400 items-center shrink-0">
                     <span class="status-dot status-saved mr-1"></span> 
                     <span id="statusText" class="hidden md:inline">Ready</span>
@@ -94,9 +92,9 @@
                 <div class="flex justify-between items-center">
                     <span class="text-[10px] font-bold uppercase text-slate-400">Files</span>
                     <div class="flex gap-1">
-                        <button onclick="document.getElementById('anyFileInput').click()" class="p-1.5 text-blue-600 hover:bg-blue-100 rounded-md" title="上傳檔案"><i data-lucide="upload" size="18"></i></button>
-                        <button onclick="createNewFolder()" class="p-1.5 text-slate-600 hover:bg-blue-100 rounded-md" title="新增資料夾"><i data-lucide="folder-plus" size="18"></i></button>
-                        <button onclick="createNewFile()" class="p-1.5 text-blue-600 hover:bg-blue-100 rounded-md" title="新增文件"><i data-lucide="file-plus" size="18"></i></button>
+                        <button onclick="document.getElementById('anyFileInput').click()" class="p-1.5 text-blue-600 hover:bg-blue-100 rounded-md"><i data-lucide="upload" size="18"></i></button>
+                        <button onclick="createNewFolder()" class="p-1.5 text-slate-600 hover:bg-blue-100 rounded-md"><i data-lucide="folder-plus" size="18"></i></button>
+                        <button onclick="createNewFile()" class="p-1.5 text-blue-600 hover:bg-blue-100 rounded-md"><i data-lucide="file-plus" size="18"></i></button>
                     </div>
                 </div>
                 <input type="file" id="anyFileInput" class="hidden" onchange="uploadAnyFile(event)">
@@ -104,9 +102,8 @@
                     <span class="cursor-pointer hover:underline" onclick="navigateTo('')">Root</span>
                 </div>
             </div>
-            <div id="fileList" class="flex-1 overflow-y-auto p-2 pb-20 space-y-0.5" ondragover="this.classList.add('drag-over'); event.preventDefault();" ondragleave="this.classList.remove('drag-over')" ondrop="handleSidebarDrop(event)">
-                <div class="text-center py-4 text-slate-400 text-xs">Loading...</div>
-            </div>
+            <div id="fileList" class="flex-1 overflow-y-auto p-2 pb-20 space-y-0.5">
+                </div>
         </aside>
 
         <main class="flex-1 flex flex-col bg-white overflow-hidden w-full">
