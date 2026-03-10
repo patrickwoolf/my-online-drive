@@ -132,48 +132,55 @@
 
         // 圖片上傳邏輯：上傳後插入 URL 連結而非 Base64
         async function uploadImageAndInsert(file) {
-            if (!file || !document.getElementById('ghToken').value) return;
+            if (!currentFilePath) { alert("請先開啟一個檔案！"); return; }
+            if (!document.getElementById('ghToken').value) { alert("請輸入 GitHub Token！"); return; }
         
-            // 1. 取得當前檔案的名稱（不含路徑與副檔名）作為資料夾名
-            let folderName = "default";
-            if (currentFilePath) {
-                // 先取路徑最後一段 (檔名.html)，再去掉副檔名
-                const baseName = currentFilePath.split('/').pop();
-                folderName = baseName.substring(0, baseName.lastIndexOf('.')) || baseName;
-            }
-        
-            updateStatus('syncing', 'Uploading Image to ' + folderName + '...');
+            // 1. 建立暫時 ID 與本地預覽 URL
+            const tempId = 'img-' + Date.now();
+            const localUrl = URL.createObjectURL(file);
             
+            // 2. 立即插入圖片，顯示上傳中狀態
+            document.execCommand('insertHTML', false, `<img src="${localUrl}" id="${tempId}" class="uploading" style="max-width:100%;">`);
+            updateStatus('syncing', '正在上傳圖片...');
+        
             const reader = new FileReader();
+            reader.readAsDataURL(file);
             reader.onload = async () => {
                 const base64 = reader.result.split(',')[1];
                 
-                // 2. 組合路徑：assets/檔案名/時間戳-檔名
-                const fileName = `assets/${folderName}/${Date.now()}-${file.name || 'pasted.png'}`;
-                
+                // 3. 取得資料夾名稱：assets/檔案名稱(不含副檔名)/
+                const baseName = currentFilePath.split('/').pop();
+                const folderName = baseName.substring(0, baseName.lastIndexOf('.')) || baseName;
+                const uploadPath = `assets/${folderName}/${Date.now()}.jpg`;
+        
                 try {
-                    const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${fileName}`, {
+                    const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${uploadPath}`, {
                         method: 'PUT',
                         headers: getHeaders(),
-                        body: JSON.stringify({ 
-                            message: `upload image for ${folderName}`, 
-                            content: base64 
-                        })
+                        body: JSON.stringify({ message: `img for ${folderName}`, content: base64 })
                     });
         
                     if (res.ok) {
-                        const data = await res.json();
-                        // 3. 插入圖片 URL
-                        const imgHtml = `<img src="${data.content.download_url}" style="max-width:100%;">`;
-                        document.execCommand('insertHTML', false, imgHtml);
-                        updateStatus('saved', 'Image Inserted');
+                        const d = await res.json();
+                        const img = document.getElementById(tempId);
+                        if (img) {
+                            // 4. 上傳成功，替換為正式 URL 並移除上傳樣式
+                            img.src = d.content.download_url;
+                            img.classList.remove('uploading');
+                            img.removeAttribute('id'); // 移除 ID 避免存檔冗餘
+                            
+                            URL.revokeObjectURL(localUrl); // 釋放記憶體
+                            updateStatus('saved', '圖片上傳成功');
+                            
+                            isDirty = true;
+                            saveFile(); // 強制觸發存檔
+                        }
                     }
-                } catch (e) { 
-                    updateStatus('unsaved', 'Upload Error');
-                    console.error(e);
+                } catch (e) {
+                    updateStatus('unsaved', '上傳失敗');
+                    console.error("圖片上傳出錯:", e);
                 }
             };
-            reader.readAsDataURL(file);
         }
 
         async function syncFiles() {
