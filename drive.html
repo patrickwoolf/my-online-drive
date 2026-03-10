@@ -12,43 +12,26 @@
         #editor * { font-family: inherit !important; font-size: 1rem !important; color: #334155 !important; background-color: transparent !important; line-height: 1.5 !important; }
         #editor table { border-collapse: collapse; width: 100%; margin: 10px 0; border: 1px solid #cbd5e1 !important; }
         #editor td { border: 1px solid #cbd5e1 !important; padding: 8px; min-width: 40px; }
-        
         .toolbar-scroll { display: flex; overflow-x: auto; white-space: nowrap; -ms-overflow-style: none; scrollbar-width: none; }
         .toolbar-scroll::-webkit-scrollbar { display: none; }
-        
         #sidebar { transition: all 0.3s ease; width: 280px; z-index: 50; flex-shrink: 0; }
         .sidebar-closed { margin-left: -280px; }
-        
         .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
         .status-saved { background: #22c55e; }
         .status-unsaved { background: #ef4444; }
         .status-syncing { background: #3b82f6; animation: pulse 1s infinite; }
-        
-        /* 檔案項目：設定為 relative 讓按鈕可以絕對定位 */
-        .file-item { 
-            display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.75rem; 
-            border-radius: 0.5rem; cursor: pointer; transition: background 0.2s; position: relative; 
-        }
+
+        /* 檔案項目與按鈕邏輯 */
+        .file-item { display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.75rem; border-radius: 0.5rem; cursor: pointer; transition: background 0.2s; position: relative; }
         .file-item:hover { background-color: #eff6ff; }
+        .file-name { font-size: 0.875rem; color: #334155; font-weight: 500; flex: 1; word-break: break-all; white-space: normal; line-height: 1.25rem; padding-right: 10px; }
         
-        /* 檔名：全顯示、可分行、不截斷 */
-        .file-name { 
-            font-size: 0.875rem; color: #334155; font-weight: 500; flex: 1; 
-            word-break: break-all; white-space: normal; line-height: 1.25rem;
-            padding-right: 10px; /* 基本間距 */
-        }
-        
-        /* 按鈕組：Hover 出現，絕對定位在右上角 */
-        .action-btns { 
-            display: none; position: absolute; right: 0.4rem; top: 0.4rem;
-            background: rgba(239, 246, 255, 0.95); backdrop-filter: blur(2px);
-            padding: 2px; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            gap: 2px; z-index: 10;
-        }
+        /* 搬移與刪除按鈕：Hover才出現，絕對定位擋住檔名 */
+        .action-btns { display: none; position: absolute; right: 0.4rem; top: 0.4rem; background: rgba(239, 246, 255, 0.98); backdrop-filter: blur(4px); padding: 4px; border-radius: 6px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); gap: 4px; z-index: 10; border: 1px solid #dbeafe; }
         .file-item:hover .action-btns { display: flex; }
         .icon-btn { color: #64748b; padding: 4px; border-radius: 4px; transition: all 0.2s; }
         .icon-btn:hover { background: white; color: #3b82f6; }
-        .icon-btn.delete:hover { color: #ef4444; }
+        .icon-btn.delete:hover { color: #ef4444; background: #fef2f2; }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900 font-sans h-screen flex flex-col overflow-hidden">
@@ -76,7 +59,7 @@
                 <div class="flex justify-between items-center">
                     <span class="text-[10px] font-bold uppercase text-slate-400">Files</span>
                     <div class="flex gap-1">
-                        <button onclick="document.getElementById('anyFileInput').click()" class="p-1.5 text-blue-600 hover:bg-blue-100 rounded-md" title="Upload"><i data-lucide="upload" size="18"></i></button>
+                        <button onclick="document.getElementById('anyFileInput').click()" class="p-1.5 text-blue-600 hover:bg-blue-100 rounded-md" title="Upload File"><i data-lucide="upload" size="18"></i></button>
                         <button onclick="createNewFolder()" class="p-1.5 text-slate-600 hover:bg-blue-100 rounded-md" title="New Folder"><i data-lucide="folder-plus" size="18"></i></button>
                         <button onclick="createNewFile()" class="p-1.5 text-blue-600 hover:bg-blue-100 rounded-md" title="New File"><i data-lucide="file-plus" size="18"></i></button>
                     </div>
@@ -135,7 +118,64 @@
             lucide.createIcons();
         });
 
-        // 核心同步邏輯：包含資料夾、麵包屑、資產過濾、按鈕 Hover
+        // 貼上圖片：徹底攔截 Base64，強制改為上傳 GitHub
+        document.getElementById('editor').addEventListener('paste', (e) => {
+            const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+            for (let item of items) {
+                if (item.type.indexOf('image') !== -1) {
+                    e.preventDefault(); // 阻止瀏覽器預設插入 Base64
+                    const file = item.getAsFile();
+                    uploadImageAndInsert(file);
+                }
+            }
+        });
+
+        // 圖片上傳邏輯：上傳後插入 URL 連結而非 Base64
+        async function uploadImageAndInsert(file) {
+            if (!file || !document.getElementById('ghToken').value) return;
+        
+            // 1. 取得當前檔案的名稱（不含路徑與副檔名）作為資料夾名
+            let folderName = "default";
+            if (currentFilePath) {
+                // 先取路徑最後一段 (檔名.html)，再去掉副檔名
+                const baseName = currentFilePath.split('/').pop();
+                folderName = baseName.substring(0, baseName.lastIndexOf('.')) || baseName;
+            }
+        
+            updateStatus('syncing', 'Uploading Image to ' + folderName + '...');
+            
+            const reader = new FileReader();
+            reader.onload = async () => {
+                const base64 = reader.result.split(',')[1];
+                
+                // 2. 組合路徑：assets/檔案名/時間戳-檔名
+                const fileName = `assets/${folderName}/${Date.now()}-${file.name || 'pasted.png'}`;
+                
+                try {
+                    const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${fileName}`, {
+                        method: 'PUT',
+                        headers: getHeaders(),
+                        body: JSON.stringify({ 
+                            message: `upload image for ${folderName}`, 
+                            content: base64 
+                        })
+                    });
+        
+                    if (res.ok) {
+                        const data = await res.json();
+                        // 3. 插入圖片 URL
+                        const imgHtml = `<img src="${data.content.download_url}" style="max-width:100%;">`;
+                        document.execCommand('insertHTML', false, imgHtml);
+                        updateStatus('saved', 'Image Inserted');
+                    }
+                } catch (e) { 
+                    updateStatus('unsaved', 'Upload Error');
+                    console.error(e);
+                }
+            };
+            reader.readAsDataURL(file);
+        }
+
         async function syncFiles() {
             if (!document.getElementById('ghToken').value) return;
             localStorage.setItem('gh_token', document.getElementById('ghToken').value);
@@ -145,9 +185,7 @@
                 const files = await res.json();
                 const list = document.getElementById('fileList'); list.innerHTML = '';
                 if (!Array.isArray(files)) return;
-
                 files.sort((a, b) => (a.type === b.type) ? a.name.localeCompare(b.name) : (a.type === 'dir' ? -1 : 1));
-
                 files.forEach(f => {
                     if (f.name === 'assets') return;
                     const isDir = f.type === 'dir';
@@ -155,7 +193,6 @@
                     const ext = hasExt ? f.name.split('.').pop().toLowerCase() : '';
                     const isEditable = !isDir && (!hasExt || ['html', 'txt', 'md'].includes(ext));
                     const isPdf = ext === 'pdf';
-
                     const div = document.createElement('div');
                     div.className = 'file-item';
                     div.onclick = (e) => {
@@ -163,7 +200,6 @@
                         if (isDir) navigateTo(f.path);
                         else handleFileClick(f.path, f.download_url, isEditable, isPdf);
                     };
-
                     div.innerHTML = `
                         <i data-lucide="${isDir ? 'folder' : (isEditable ? 'file-text' : (isPdf ? 'file-digit' : 'file'))}" 
                            size="18" class="${isDir ? 'text-amber-400' : (isEditable ? 'text-blue-500' : 'text-slate-400')} shrink-0 mt-0.5"></i>
@@ -189,7 +225,6 @@
                 currentFilePath = path; currentFileSha = data.sha;
                 document.getElementById('currentFileName').innerText = path;
                 isDirty = false; updateStatus('saved', 'Opened');
-                if (window.innerWidth < 768) toggleSidebar();
             } else if (isPdf) {
                 const res = await fetch(url);
                 const blob = await res.blob();
@@ -197,7 +232,6 @@
             } else { window.open(url, '_blank'); }
         }
 
-        // 資料夾導覽
         function navigateTo(path) { currentPath = path; syncFiles(); }
         function updateBreadcrumbs() {
             const container = document.getElementById('breadcrumb');
@@ -206,51 +240,11 @@
             let full = '';
             currentPath.split('/').filter(p => p).forEach(part => {
                 full += (full ? '/' : '') + part;
-                const p = full;
-                container.innerHTML += ` <i data-lucide="chevron-right" size="10" class="mx-1"></i><span class="cursor-pointer hover:underline" onclick="navigateTo('${p}')">${part}</span>`;
+                container.innerHTML += ` <i data-lucide="chevron-right" size="10" class="mx-1"></i><span class="cursor-pointer hover:underline" onclick="navigateTo('${full}')">${part}</span>`;
             });
             lucide.createIcons();
         }
 
-        // 移動項目
-        async function moveItem(oldPath, sha) {
-            const newPath = prompt("將檔案移動至 (包含完整路徑):", oldPath);
-            if (!newPath || newPath === oldPath) return;
-            const resGet = await fetch(`https://api.github.com/repos/${REPO}/contents/${oldPath}`, { headers: getHeaders() });
-            const data = await resGet.json();
-            const resPut = await fetch(`https://api.github.com/repos/${REPO}/contents/${newPath}`, {
-                method: 'PUT', headers: getHeaders(), body: JSON.stringify({ message: 'move', content: data.content })
-            });
-            if (resPut.ok) {
-                await fetch(`https://api.github.com/repos/${REPO}/contents/${oldPath}`, {
-                    method: 'DELETE', headers: getHeaders(), body: JSON.stringify({ message: 'cleanup', sha: sha })
-                });
-                syncFiles();
-            }
-        }
-
-        // 刪除項目
-        async function deleteItem(path, sha) {
-            if (confirm(`確定要刪除 "${path}" 嗎？`)) {
-                await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { 
-                    method: 'DELETE', headers: getHeaders(), body: JSON.stringify({ message: 'delete', sha: sha }) 
-                });
-                syncFiles();
-            }
-        }
-
-        // 建立新資料夾
-        async function createNewFolder() {
-            const name = prompt("資料夾名稱:"); if (!name) return;
-            const path = currentPath ? `${currentPath}/${name}/.keep` : `${name}/.keep`;
-            await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { 
-                method: 'PUT', headers: getHeaders(), body: JSON.stringify({ message: 'new dir', content: btoa(' ') }) 
-            });
-            syncFiles();
-        }
-
-        // 其餘工具函數 (saveFile, createNewFile, uploadAnyFile, changeZoom, tableAction, etc.)
-        // 全部維持你原始的邏輯...
         async function saveFile() {
             if (!currentFilePath || isSaving) return;
             isSaving = true; updateStatus('syncing', 'Saving...');
@@ -269,11 +263,39 @@
             isSaving = false;
         }
 
+        async function moveItem(oldPath, sha) {
+            const newPath = prompt("移動至:", oldPath);
+            if (!newPath || newPath === oldPath) return;
+            const resGet = await fetch(`https://api.github.com/repos/${REPO}/contents/${oldPath}`, { headers: getHeaders() });
+            const data = await resGet.json();
+            const resPut = await fetch(`https://api.github.com/repos/${REPO}/contents/${newPath}`, {
+                method: 'PUT', headers: getHeaders(), body: JSON.stringify({ message: 'move', content: data.content })
+            });
+            if (resPut.ok) {
+                await fetch(`https://api.github.com/repos/${REPO}/contents/${oldPath}`, { method: 'DELETE', headers: getHeaders(), body: JSON.stringify({ message: 'clean', sha }) });
+                syncFiles();
+            }
+        }
+
+        async function deleteItem(path, sha) {
+            if (confirm(`刪除 "${path}"?`)) {
+                await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { method: 'DELETE', headers: getHeaders(), body: JSON.stringify({ message: 'delete', sha }) });
+                syncFiles();
+            }
+        }
+
         async function createNewFile() {
             const name = prompt("檔名:"); if (!name) return;
             currentFilePath = currentPath ? `${currentPath}/${name}` : name;
             currentFileSha = ''; document.getElementById('editor').innerHTML = '<div></div>';
             await saveFile(); syncFiles();
+        }
+
+        async function createNewFolder() {
+            const name = prompt("資料夾名稱:"); if (!name) return;
+            const path = currentPath ? `${currentPath}/${name}/.keep` : `${name}/.keep`;
+            await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify({ message: 'new dir', content: btoa(' ') }) });
+            syncFiles();
         }
 
         async function uploadAnyFile(e) {
@@ -282,30 +304,12 @@
             reader.onload = async () => {
                 const base64 = reader.result.split(',')[1];
                 const path = currentPath ? `${currentPath}/${file.name}` : file.name;
-                await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { 
-                    method: 'PUT', headers: getHeaders(), body: JSON.stringify({ message: 'upload', content: base64 }) 
-                });
+                await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify({ message: 'upload', content: base64 }) });
                 syncFiles();
             };
             reader.readAsDataURL(file);
         }
 
-        async function uploadImageAndInsert(file) {
-            const reader = new FileReader();
-            reader.onload = async () => {
-                const base64 = reader.result.split(',')[1];
-                const fileName = `assets/${Date.now()}-${file.name || 'img.png'}`;
-                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${fileName}`, {
-                    method: 'PUT', headers: getHeaders(), body: JSON.stringify({ message: 'img', content: base64 })
-                });
-                if (res.ok) {
-                    const data = await res.json();
-                    document.execCommand('insertHTML', false, `<img src="${data.content.download_url}" style="max-width:100%;">`);
-                }
-            };
-            reader.readAsDataURL(file);
-        }
-        function handleImageSelect(e) { uploadImageAndInsert(e.target.files[0]); }
         function changeZoom(delta) { zoom = Math.max(0.5, Math.min(2, zoom + delta)); applyZoom(); }
         function resetZoom() { zoom = 1; applyZoom(); }
         function applyZoom() { document.getElementById('editor').style.transform = `scale(${zoom})`; document.getElementById('zoomPercent').innerText = `${Math.round(zoom * 100)}%`; }
@@ -326,6 +330,7 @@
             else if (cmd === 'deleteColumn') Array.from(table.rows).forEach(r => r.deleteCell(colIdx));
         }
 
+        function handleImageSelect(e) { uploadImageAndInsert(e.target.files[0]); }
         document.getElementById('editor').addEventListener('input', () => { isDirty = true; updateStatus('unsaved', 'Unsaved'); });
         setInterval(() => { if (isDirty) saveFile(); }, 15000);
     </script>
