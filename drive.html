@@ -13,7 +13,6 @@
         .toolbar-scroll { display: flex; overflow-x: auto; white-space: nowrap; -ms-overflow-style: none; scrollbar-width: none; }
         #sidebar { transition: all 0.3s ease; width: 280px; z-index: 50; flex-shrink: 0; }
         .sidebar-closed { margin-left: -280px; }
-        #overlay { display: none; }
         @media (max-width: 768px) { #sidebar { position: fixed; height: 100svh; } }
         
         .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
@@ -21,47 +20,49 @@
         .status-unsaved { background: #ef4444; }
         .status-syncing { background: #3b82f6; animation: pulse 1s infinite; }
         
-        /* 檔案項目樣式 */
+        /* 檔案項目：允許高度隨文字內容增長 */
         .file-item { 
             display: flex; 
-            align-items: center; 
+            align-items: flex-start; /* 對齊頂部，方便多行顯示 */
             gap: 0.75rem; 
-            padding: 0.6rem 0.75rem; 
+            padding: 0.75rem; 
             border-radius: 0.5rem; 
             cursor: pointer; 
             transition: background 0.2s; 
             position: relative; 
-            overflow: hidden; /* 確保檔名不超出外框 */
+            min-height: 44px;
         }
         .file-item:hover { background-color: #eff6ff; }
         
-        /* 核心修改：完整顯示文字，不使用點點縮寫 */
+        /* 核心修改：允許自動換行顯示全部名稱 */
         .file-name { 
             font-size: 0.875rem; 
             color: #334155; 
             font-weight: 500; 
             flex: 1; 
-            white-space: nowrap; /* 強制一行 */
-            overflow: hidden;    /* 隱藏超出部分 */
-            text-overflow: clip; /* 不使用點點 ... */
+            word-break: break-all; /* 長檔名強制換行 */
+            white-space: normal;  /* 允許換行 */
+            line-height: 1.25rem;
+            padding-right: 20px;   /* 預留空間避免文字太靠近邊緣 */
         }
         
-        /* 按鈕組：Hover 時直接蓋在文字上方 */
+        /* 按鈕組：Hover 時擋住文字，固定在右上角 */
         .action-btns { 
             display: none; 
             position: absolute; 
-            right: 0; 
-            top: 0;
-            bottom: 0;
-            background: #eff6ff; /* 與 hover 背景色一致 */
-            padding: 0 0.5rem;
-            align-items: center;
-            gap: 4px;
-            box-shadow: -15px 0 15px #eff6ff; /* 增加左側陰影讓文字銜接自然點 */
+            right: 0.25rem; 
+            top: 0.25rem;
+            background: rgba(239, 246, 255, 0.95); /* 略微透明的藍色背景 */
+            backdrop-filter: blur(2px); /* 磨砂玻璃效果 */
+            padding: 4px;
+            border-radius: 6px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            gap: 2px;
+            z-index: 10;
         }
         .file-item:hover .action-btns { display: flex; }
         
-        .icon-btn { color: #94a3b8; padding: 4px; border-radius: 4px; transition: all 0.2s; }
+        .icon-btn { color: #64748b; padding: 4px; border-radius: 4px; transition: all 0.2s; }
         .move-btn:hover { color: #3b82f6; background: #dbeafe; }
         .delete-btn:hover { color: #ef4444; background: #fee2e2; }
     </style>
@@ -76,18 +77,18 @@
                 </h1>
             </div>
             <div class="flex items-center gap-2 flex-1 justify-end max-w-2xl">
-                <input type="password" id="ghToken" placeholder="GitHub Token" class="w-full max-w-[120px] sm:max-w-[240px] border rounded-md px-3 py-1.5 text-xs outline-none bg-slate-50 transition-all">
+                <input type="password" id="ghToken" placeholder="GitHub Token" class="w-full max-w-[120px] border rounded-md px-3 py-1.5 text-xs outline-none bg-slate-50">
                 <div id="saveStatus" class="flex text-[10px] uppercase font-bold text-slate-400 items-center shrink-0">
                     <span class="status-dot status-saved mr-1"></span> 
-                    <span id="statusText" class="hidden md:inline">Ready</span>
+                    <span id="statusText">Ready</span>
                 </div>
-                <button onclick="syncFiles()" class="bg-blue-600 text-white p-1.5 rounded-md shrink-0 hover:bg-blue-700 active:scale-95 transition-all"><i data-lucide="refresh-cw" size="16"></i></button>
+                <button onclick="syncFiles()" class="bg-blue-600 text-white p-1.5 rounded-md hover:bg-blue-700 transition-all"><i data-lucide="refresh-cw" size="16"></i></button>
             </div>
         </div>
     </header>
 
     <div class="flex flex-1 overflow-hidden">
-        <aside id="sidebar" class="bg-white border-r flex flex-col shadow-xl md:shadow-none absolute md:relative h-full">
+        <aside id="sidebar" class="bg-white border-r flex flex-col w-[280px]">
             <div class="p-3 border-b bg-slate-50 space-y-2">
                 <div class="flex justify-between items-center">
                     <span class="text-[10px] font-bold uppercase text-slate-400">Files</span>
@@ -98,39 +99,37 @@
                     </div>
                 </div>
                 <input type="file" id="anyFileInput" class="hidden" onchange="uploadAnyFile(event)">
-                <div id="breadcrumb" class="flex items-center gap-1 text-[11px] text-blue-600 font-medium overflow-x-auto whitespace-nowrap bg-white p-1 rounded border border-slate-200">
+                <div id="breadcrumb" class="flex items-center gap-1 text-[11px] text-blue-600 font-medium overflow-x-auto bg-white p-1 rounded border border-slate-200">
                     <span class="cursor-pointer hover:underline" onclick="navigateTo('')">Root</span>
                 </div>
             </div>
-            <div id="fileList" class="flex-1 overflow-y-auto p-2 pb-20 space-y-0.5">
+            <div id="fileList" class="flex-1 overflow-y-auto p-2 pb-20 space-y-1">
                 </div>
         </aside>
 
-        <main class="flex-1 flex flex-col bg-white overflow-hidden w-full">
-            <div class="p-1 border-b bg-slate-50/50 toolbar-scroll items-center gap-1">
-                <button onclick="exec('bold')" class="p-2 min-w-[40px] hover:bg-white rounded"><i data-lucide="bold" size="16"></i></button>
-                <button onclick="exec('italic')" class="p-2 min-w-[40px] hover:bg-white rounded"><i data-lucide="italic" size="16"></i></button>
+        <main class="flex-1 flex flex-col bg-white overflow-hidden">
+            <div class="p-1 border-b bg-slate-50/50 toolbar-scroll flex items-center gap-1">
+                <button onclick="exec('bold')" class="p-2 hover:bg-white rounded"><i data-lucide="bold" size="16"></i></button>
+                <button onclick="exec('italic')" class="p-2 hover:bg-white rounded"><i data-lucide="italic" size="16"></i></button>
                 <div class="h-6 w-px bg-slate-300 mx-1"></div>
-                <button onclick="insertTable()" class="p-2 min-w-[40px] text-slate-700 hover:bg-white rounded"><i data-lucide="table" size="18"></i></button>
-                <button onclick="document.getElementById('fileInput').click()" class="p-2 min-w-[40px] text-blue-600 hover:bg-white rounded"><i data-lucide="image-plus" size="18"></i></button>
+                <button onclick="insertTable()" class="p-2 text-slate-700 hover:bg-white rounded"><i data-lucide="table" size="18"></i></button>
+                <button onclick="document.getElementById('fileInput').click()" class="p-2 text-blue-600 hover:bg-white rounded"><i data-lucide="image-plus" size="18"></i></button>
                 <input type="file" id="fileInput" class="hidden" accept="image/*" onchange="handleImageSelect(event)">
                 <div class="ml-auto pr-2">
-                    <span id="currentFileName" class="text-xs font-medium text-slate-400 truncate max-w-[100px] block">No file</span>
+                    <span id="currentFileName" class="text-xs font-medium text-slate-400 truncate max-w-[150px] block">No file</span>
                 </div>
             </div>
             <div id="scroll-container">
-                <div id="editor" contenteditable="true" class="prose max-w-none text-base"></div>
+                <div id="editor" contenteditable="true" class="prose max-w-none"></div>
             </div>
         </main>
     </div>
 
     <script>
         const REPO = 'patrickwoolf/my-online-drive';
-        let currentPath = ''; 
-        let currentFilePath = '', currentFileSha = '', isDirty = false, isSaving = false;
+        let currentPath = '', currentFilePath = '', currentFileSha = '', isDirty = false, isSaving = false;
 
         document.addEventListener('DOMContentLoaded', () => {
-            lucide.createIcons();
             const tk = localStorage.getItem('gh_token');
             if (tk) { document.getElementById('ghToken').value = tk; syncFiles(); }
         });
@@ -146,7 +145,7 @@
             let full = '';
             currentPath.split('/').filter(p => p).forEach(part => {
                 full += (full ? '/' : '') + part;
-                container.innerHTML += ` <i data-lucide="chevron-right" size="10" class="text-slate-300 mx-0.5"></i> <span class="cursor-pointer hover:underline" onclick="navigateTo('${full}')">${part}</span>`;
+                container.innerHTML += ` <i data-lucide="chevron-right" size="10" class="text-slate-300 mx-1"></i><span class="cursor-pointer hover:underline" onclick="navigateTo('${full}')">${part}</span>`;
             });
             lucide.createIcons();
         }
@@ -175,11 +174,11 @@
                     };
 
                     div.innerHTML = `
-                        <i data-lucide="${isDir?'folder':'file-text'}" size="18" class="${isDir?'text-amber-400':'text-blue-500'} shrink-0"></i>
+                        <i data-lucide="${isDir?'folder':'file-text'}" size="18" class="${isDir?'text-amber-400':'text-blue-500'} shrink-0 mt-0.5"></i>
                         <span class="file-name">${f.name}</span>
                         <div class="action-btns">
-                            <button onclick="event.stopPropagation(); moveItem('${f.path}', '${f.sha}')" class="icon-btn move-btn" title="移動"><i data-lucide="external-link" size="14"></i></button>
-                            <button onclick="event.stopPropagation(); deleteItem('${f.path}', '${f.sha}', ${isDir})" class="icon-btn delete-btn" title="刪除"><i data-lucide="trash-2" size="14"></i></button>
+                            <button onclick="event.stopPropagation(); moveItem('${f.path}', '${f.sha}')" class="icon-btn move-btn"><i data-lucide="external-link" size="14"></i></button>
+                            <button onclick="event.stopPropagation(); deleteItem('${f.path}', '${f.sha}', ${isDir})" class="icon-btn delete-btn"><i data-lucide="trash-2" size="14"></i></button>
                         </div>`;
                     list.appendChild(div);
                 });
@@ -189,9 +188,8 @@
         }
 
         async function moveItem(oldPath, sha) {
-            const newPath = prompt("移動檔案至 (路徑/檔名)：", oldPath);
+            const newPath = prompt("移動至新路徑/檔名：", oldPath);
             if (!newPath || newPath === oldPath) return;
-            updateStatus('syncing', 'Moving...');
             try {
                 const resContent = await fetch(`https://api.github.com/repos/${REPO}/contents/${oldPath}`, { headers: getHeaders() });
                 const data = await resContent.json();
@@ -209,7 +207,7 @@
 
         async function handleFileClick(path, url) {
             updateStatus('syncing', 'Loading...');
-            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}?t=${Date.now()}`, { headers: getHeaders() });
+            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { headers: getHeaders() });
             const data = await res.json();
             try {
                 document.getElementById('editor').innerHTML = decodeURIComponent(escape(atob(data.content)));
@@ -220,9 +218,10 @@
         }
 
         async function deleteItem(path, sha, isDir) {
-            if (!confirm(`確定刪除？`)) return;
-            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { method: 'DELETE', headers: getHeaders(), body: JSON.stringify({ message: 'delete', sha: sha }) });
-            if (res.ok) syncFiles();
+            if (confirm(`確定刪除？`)) {
+                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { method: 'DELETE', headers: getHeaders(), body: JSON.stringify({ message: 'delete', sha: sha }) });
+                if (res.ok) syncFiles();
+            }
         }
 
         async function saveFile() {
@@ -261,7 +260,7 @@
             };
         }
 
-        function toggleSidebar() { document.getElementById('sidebar').classList.toggle('sidebar-closed'); }
+        function toggleSidebar() { document.getElementById('sidebar').classList.toggle('hidden'); }
         function updateStatus(s, t) { document.querySelector('.status-dot').className = `status-dot status-${s} mr-1`; document.getElementById('statusText').innerText = t; }
         function exec(c) { document.execCommand(c, false, null); }
         document.getElementById('editor').addEventListener('input', () => { isDirty = true; updateStatus('unsaved', 'Unsaved'); });
