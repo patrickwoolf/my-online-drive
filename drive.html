@@ -75,7 +75,7 @@
                     <div class="flex gap-1">
                         <button onclick="document.getElementById('anyFileInput').click()" class="p-1.5 text-blue-600 hover:bg-blue-100 rounded-md" title="Upload File"><i data-lucide="upload" size="18"></i></button>
                         <button onclick="createNewFolder()" class="p-1.5 text-slate-600 hover:bg-blue-100 rounded-md" title="New Folder"><i data-lucide="folder-plus" size="18"></i></button>
-                        <button onclick="createNewFile()" class="p-1.5 text-blue-600 hover:bg-blue-100 rounded-md" title="New HTML File"><i data-lucide="file-plus" size="18"></i></button>
+                        <button onclick="createNewFile()" class="p-1.5 text-blue-600 hover:bg-blue-100 rounded-md" title="New Text File"><i data-lucide="file-plus" size="18"></i></button>
                     </div>
                 </div>
                 <input type="file" id="anyFileInput" class="hidden" onchange="uploadAnyFile(event)">
@@ -137,6 +137,7 @@
             lucide.createIcons();
         });
 
+        // 貼上圖片處理
         document.getElementById('editor').addEventListener('paste', async (e) => {
             const items = (e.clipboardData || e.originalEvent.clipboardData).items;
             for (let item of items) {
@@ -184,17 +185,21 @@
                 
                 files.sort((a, b) => (a.type === b.type) ? a.name.localeCompare(b.name) : (a.type === 'dir' ? -1 : 1));
                 
-                const editableExts = ['html', 'htm', 'txt', 'md', 'json', 'css', 'js'];
+                const editableExts = ['html', 'htm', 'txt', 'md', 'json', 'css', 'js', 'php', 'py', 'sh', 'yaml', 'yml'];
 
                 files.forEach(f => {
                     const isDir = f.type === 'dir';
-                    const ext = f.name.split('.').pop().toLowerCase();
-                    const isEditable = editableExts.includes(ext);
+                    // 檢查是否有副檔名
+                    const hasDot = f.name.includes('.');
+                    const ext = hasDot ? f.name.split('.').pop().toLowerCase() : '';
+                    
+                    // 判斷邏輯：是資料夾、在清單中、或者是「完全沒有副檔名」的檔案 -> 視為可編輯
+                    const isEditable = !isDir && (editableExts.includes(ext) || !hasDot);
+                    const isPdf = ext === 'pdf';
                     
                     const div = document.createElement('div');
                     div.className = 'file-item';
                     
-                    // 修改點擊邏輯：資料夾導訪，可編輯檔案載入編輯器，其他檔案直接在新分頁打開原始連結
                     div.onclick = (e) => { 
                         if (e.target.closest('.action-btns')) return;
                         if (isDir) {
@@ -202,15 +207,24 @@
                         } else if (isEditable) {
                             handleFileClick(f.path);
                         } else {
+                            // PDF 或其他二進位檔案，直接在新分頁開啟
                             window.open(f.download_url, '_blank');
                         }
                     };
 
+                    // 圖示選擇
+                    let iconName = 'file-digit';
+                    if (isDir) iconName = 'folder';
+                    else if (isPdf) iconName = 'file-text'; // PDF 用文件圖示
+                    else if (isEditable) iconName = 'file-edit'; // 可編輯用編輯圖示
+                    else iconName = 'eye'; // 僅檢視用眼睛
+
                     div.innerHTML = `
-                        <i data-lucide="${isDir?'folder':(isEditable?'file-text':'eye')}" size="18" class="${isDir?'text-amber-400':(isEditable?'text-blue-500':'text-slate-400')} shrink-0 mt-0.5"></i>
+                        <i data-lucide="${iconName}" size="18" class="${isDir?'text-amber-400':(isEditable?'text-blue-500':'text-slate-400')} shrink-0 mt-0.5"></i>
                         <div class="flex flex-col flex-1 overflow-hidden">
                             <span class="file-name">${f.name}</span>
-                            ${!isDir && !isEditable ? '<span class="text-[9px] text-slate-400 font-bold">點擊檢視/下載</span>' : ''}
+                            ${!isDir && !isEditable ? `<span class="text-[9px] text-slate-400 font-bold uppercase">${isPdf?'PDF 閱讀器':'點擊開啟'}</span>` : ''}
+                            ${!isDir && isEditable && !hasDot ? '<span class="text-[9px] text-blue-400 font-bold uppercase">Text File</span>' : ''}
                         </div>
                         <div class="action-btns">
                             <button onclick="event.stopPropagation(); moveItem('${f.path}', '${f.sha}')" class="icon-btn" title="移動"><i data-lucide="external-link" size="14"></i></button>
@@ -229,11 +243,16 @@
             try {
                 const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { headers: getHeaders() });
                 const data = await res.json();
-                document.getElementById('editor').innerHTML = decodeURIComponent(escape(atob(data.content)));
+                // 處理 Base64 解碼，確保 UTF-8 正常
+                const content = decodeURIComponent(escape(atob(data.content)));
+                document.getElementById('editor').innerHTML = content;
                 currentFilePath = path; currentFileSha = data.sha;
                 document.getElementById('currentFileName').innerText = path.split('/').pop();
                 updateStatus('saved', 'Opened');
-            } catch (e) { updateStatus('unsaved', 'Error loading file'); }
+            } catch (e) { 
+                alert('無法解析此檔案內容。可能是非文字檔。');
+                updateStatus('unsaved', 'Load Error'); 
+            }
         }
 
         async function saveFile() {
@@ -255,9 +274,9 @@
         }
 
         async function createNewFile() {
-            const name = prompt("請輸入新檔名 (例如: notes.html):"); if (!name) return;
+            const name = prompt("請輸入新檔名:"); if (!name) return;
             currentFilePath = currentPath ? `${currentPath}/${name}` : name;
-            currentFileSha = ''; document.getElementById('editor').innerHTML = '<div>New File Content</div>';
+            currentFileSha = ''; document.getElementById('editor').innerHTML = '<div></div>';
             await saveFile(); syncFiles();
         }
 
@@ -286,7 +305,7 @@
         }
 
         async function moveItem(oldPath, sha) {
-            const newPath = prompt("將檔案移動至 (包含完整路徑):", oldPath);
+            const newPath = prompt("將檔案移動至 (包含路徑):", oldPath);
             if (!newPath || newPath === oldPath) return;
             const resGet = await fetch(`https://api.github.com/repos/${REPO}/contents/${oldPath}`, { headers: getHeaders() });
             const data = await resGet.json();
@@ -311,6 +330,7 @@
         }
 
         function navigateTo(path) { currentPath = path; syncFiles(); }
+        
         function updateBreadcrumbs() {
             const container = document.getElementById('breadcrumb');
             container.innerHTML = `<span class="cursor-pointer hover:underline" onclick="navigateTo('')">Root</span>`;
@@ -354,6 +374,8 @@
         }
         function exec(c) { document.execCommand(c, false, null); }
         document.getElementById('editor').addEventListener('input', () => { isDirty = true; updateStatus('unsaved', 'Unsaved'); });
+        
+        // 每 15 秒自動儲存
         setInterval(() => { if (isDirty) saveFile(); }, 15000);
     </script>
 </body>
