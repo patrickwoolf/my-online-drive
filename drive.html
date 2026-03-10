@@ -207,9 +207,6 @@
                             navigateTo(f.path);
                         } else if (isEditable) {
                             handleFileClick(f.path);
-                        } else if (isPdf || isImage) {
-                            // PDF 與 圖片直接在新分頁開啟 GitHub 的原始檔案連結
-                            window.open(f.download_url, '_blank');
                         } else {
                             // 其他檔案預設行為
                             window.open(f.download_url, '_blank');
