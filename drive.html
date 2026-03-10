@@ -15,27 +15,55 @@
         .sidebar-closed { margin-left: -280px; }
         #overlay { display: none; }
         @media (max-width: 768px) { #sidebar { position: fixed; height: 100svh; } }
+        
         .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
         .status-saved { background: #22c55e; }
         .status-unsaved { background: #ef4444; }
         .status-syncing { background: #3b82f6; animation: pulse 1s infinite; }
         
-        /* 檔案列表樣式優化 */
-        .file-item { display: flex; align-items: flex-start; gap: 0.5rem; padding: 0.6rem 0.75rem; border-radius: 0.5rem; cursor: pointer; transition: background 0.2s; position: relative; min-width: 0; }
+        /* 檔案項目 */
+        .file-item { 
+            display: flex; 
+            align-items: center; 
+            gap: 0.75rem; 
+            padding: 0.6rem 0.75rem; 
+            border-radius: 0.5rem; 
+            cursor: pointer; 
+            transition: background 0.2s; 
+            position: relative; /* 為了讓按鈕絕對定位 */
+            overflow: hidden;
+        }
         .file-item:hover { background-color: #eff6ff; }
-        .file-name { word-break: break-all; white-space: normal; font-size: 0.875rem; color: #334155; font-weight: 500; flex: 1; line-height: 1.25rem; }
+        .file-name { 
+            font-size: 0.875rem; 
+            color: #334155; 
+            font-weight: 500; 
+            flex: 1; 
+            white-space: nowrap; 
+            overflow: hidden; 
+            text-overflow: ellipsis; 
+            padding-right: 20px; /* 預留一點空間給按鈕感應 */
+        }
         
-        /* 操作按鈕組 */
-        .action-btns { display: flex; opacity: 0; transition: opacity 0.2s; gap: 2px; flex-shrink: 0; }
-        .file-item:hover .action-btns { opacity: 1; }
+        /* 按鈕組：Hover 時擋住文字 */
+        .action-btns { 
+            display: none; 
+            position: absolute; 
+            right: 0.5rem; 
+            top: 50%; 
+            transform: translateY(-50%);
+            background: #eff6ff; /* 與 hover 背景色相同 */
+            box-shadow: -10px 0 10px #eff6ff; /* 邊緣淡化遮擋效果 */
+            padding-left: 8px;
+            gap: 4px;
+        }
+        .file-item:hover .action-btns { display: flex; }
+        
         .icon-btn { color: #94a3b8; padding: 4px; border-radius: 4px; transition: all 0.2s; }
         .move-btn:hover { color: #3b82f6; background: #dbeafe; }
         .delete-btn:hover { color: #ef4444; background: #fee2e2; }
 
-        table { border-collapse: collapse; width: 100%; margin: 10px 0; border: 1px solid #cbd5e1; }
-        td { border: 1px solid #cbd5e1; padding: 8px; min-width: 40px; }
         img.uploading { opacity: 0.4; filter: blur(2px); border: 2px dashed #3b82f6; }
-        .drag-over { background-color: #dbeafe !important; border: 2px dashed #3b82f6 !important; }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900 font-sans h-screen flex flex-col overflow-hidden" ondragover="event.preventDefault()" ondrop="handleGlobalDrop(event)">
@@ -87,7 +115,6 @@
                 <button onclick="exec('italic')" class="p-2 min-w-[40px] hover:bg-white rounded"><i data-lucide="italic" size="16"></i></button>
                 <div class="h-6 w-px bg-slate-300 mx-1"></div>
                 <button onclick="insertTable()" class="p-2 min-w-[40px] text-slate-700 hover:bg-white rounded"><i data-lucide="table" size="18"></i></button>
-                <div class="h-6 w-px bg-slate-300 mx-1"></div>
                 <button onclick="document.getElementById('fileInput').click()" class="p-2 min-w-[40px] text-blue-600 hover:bg-white rounded"><i data-lucide="image-plus" size="18"></i></button>
                 <input type="file" id="fileInput" class="hidden" accept="image/*" onchange="handleImageSelect(event)">
                 <div class="ml-auto pr-2">
@@ -122,8 +149,7 @@
             let full = '';
             currentPath.split('/').filter(p => p).forEach(part => {
                 full += (full ? '/' : '') + part;
-                const thisPath = full;
-                container.innerHTML += ` <i data-lucide="chevron-right" size="10" class="text-slate-300 mx-0.5"></i> <span class="cursor-pointer hover:underline" onclick="navigateTo('${thisPath}')">${part}</span>`;
+                container.innerHTML += ` <i data-lucide="chevron-right" size="10" class="text-slate-300 mx-0.5"></i> <span class="cursor-pointer hover:underline" onclick="navigateTo('${full}')">${part}</span>`;
             });
             lucide.createIcons();
         }
@@ -144,23 +170,18 @@
                 files.forEach(f => {
                     if (f.name === 'assets' && !currentPath) return;
                     const isDir = f.type === 'dir';
-                    const ext = f.name.split('.').pop().toLowerCase();
-                    const isEditable = !isDir && ['html', 'txt', 'md'].includes(ext);
-                    
                     const div = document.createElement('div');
                     div.className = 'file-item';
                     div.onclick = (e) => {
                         if (e.target.closest('.action-btns')) return;
-                        isDir ? navigateTo(f.path) : handleFileClick(f.path, f.download_url, isEditable);
+                        isDir ? navigateTo(f.path) : handleFileClick(f.path, f.download_url);
                     };
 
                     div.innerHTML = `
-                        <div class="flex items-start gap-3 flex-1 min-w-0">
-                            <i data-lucide="${isDir?'folder':'file-text'}" size="18" class="${isDir?'text-amber-400':'text-blue-500'} shrink-0 mt-0.5"></i>
-                            <span class="file-name">${f.name}</span>
-                        </div>
+                        <i data-lucide="${isDir?'folder':'file-text'}" size="18" class="${isDir?'text-amber-400':'text-blue-500'} shrink-0"></i>
+                        <span class="file-name">${f.name}</span>
                         <div class="action-btns">
-                            <button onclick="event.stopPropagation(); moveItem('${f.path}', '${f.sha}')" class="icon-btn move-btn" title="移動/重新命名"><i data-lucide="external-link" size="14"></i></button>
+                            <button onclick="event.stopPropagation(); moveItem('${f.path}', '${f.sha}')" class="icon-btn move-btn" title="移動"><i data-lucide="external-link" size="14"></i></button>
                             <button onclick="event.stopPropagation(); deleteItem('${f.path}', '${f.sha}', ${isDir})" class="icon-btn delete-btn" title="刪除"><i data-lucide="trash-2" size="14"></i></button>
                         </div>`;
                     list.appendChild(div);
@@ -171,51 +192,40 @@
         }
 
         async function moveItem(oldPath, sha) {
-            const newPath = prompt("請輸入新路徑與名稱 (相對於 Root)：", oldPath);
+            const newPath = prompt("移動檔案至 (路徑/檔名)：", oldPath);
             if (!newPath || newPath === oldPath) return;
-
             updateStatus('syncing', 'Moving...');
             try {
-                // 1. 取得原始內容
                 const resContent = await fetch(`https://api.github.com/repos/${REPO}/contents/${oldPath}`, { headers: getHeaders() });
                 const data = await resContent.json();
-
-                // 2. 在新位置建立檔案
                 const resCreate = await fetch(`https://api.github.com/repos/${REPO}/contents/${newPath}`, {
-                    method: 'PUT',
-                    headers: getHeaders(),
-                    body: JSON.stringify({ message: `Move ${oldPath} to ${newPath}`, content: data.content })
+                    method: 'PUT', headers: getHeaders(), body: JSON.stringify({ message: `Move to ${newPath}`, content: data.content })
                 });
-
                 if (resCreate.ok) {
-                    // 3. 刪除舊位置檔案
                     await fetch(`https://api.github.com/repos/${REPO}/contents/${oldPath}`, {
-                        method: 'DELETE',
-                        headers: getHeaders(),
-                        body: JSON.stringify({ message: `Delete old file after move`, sha: sha })
+                        method: 'DELETE', headers: getHeaders(), body: JSON.stringify({ message: `Cleanup`, sha: sha })
                     });
                     syncFiles();
-                } else { alert("移動失敗，路徑可能已存在或無效。"); }
-            } catch (e) { alert("移動過程中出錯。"); }
+                }
+            } catch (e) { alert("移動失敗"); }
         }
 
-        async function handleFileClick(path, url, isEditable) {
-            if (isEditable) {
-                updateStatus('syncing', 'Loading...');
-                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}?t=${Date.now()}`, { headers: getHeaders() });
-                const data = await res.json();
+        async function handleFileClick(path, url) {
+            updateStatus('syncing', 'Loading...');
+            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}?t=${Date.now()}`, { headers: getHeaders() });
+            const data = await res.json();
+            try {
                 document.getElementById('editor').innerHTML = decodeURIComponent(escape(atob(data.content)));
                 currentFilePath = path; currentFileSha = data.sha;
                 document.getElementById('currentFileName').innerText = path.split('/').pop();
-                isDirty = false; updateStatus('saved', 'Opened');
-            } else { window.open(url, '_blank'); }
+                updateStatus('saved', 'Opened');
+            } catch(e) { window.open(url, '_blank'); }
         }
 
         async function deleteItem(path, sha, isDir) {
-            if (!confirm(`確定刪除 ${path}？`)) return;
+            if (!confirm(`確定刪除？`)) return;
             const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { method: 'DELETE', headers: getHeaders(), body: JSON.stringify({ message: 'delete', sha: sha }) });
             if (res.ok) syncFiles();
-            else if (isDir) alert("無法刪除內含檔案的資料夾。");
         }
 
         async function saveFile() {
@@ -243,22 +253,21 @@
             syncFiles();
         }
 
-        async function uploadFileDirect(file, targetDir) {
-            updateStatus('syncing', 'Uploading...');
+        async function uploadAnyFile(e) {
+            const file = e.target.files[0]; if (!file) return;
             const reader = new FileReader(); reader.readAsDataURL(file);
             reader.onload = async () => {
                 const base64 = reader.result.split(',')[1];
-                const path = targetDir ? `${targetDir}/${file.name}` : file.name;
-                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify({ message: 'upload', content: base64 }) });
-                if (res.ok) syncFiles();
+                const path = currentPath ? `${currentPath}/${file.name}` : file.name;
+                await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify({ message: 'upload', content: base64 }) });
+                syncFiles();
             };
         }
 
         function toggleSidebar() { document.getElementById('sidebar').classList.toggle('sidebar-closed'); }
         function updateStatus(s, t) { document.querySelector('.status-dot').className = `status-dot status-${s} mr-1`; document.getElementById('statusText').innerText = t; }
         function exec(c) { document.execCommand(c, false, null); }
-        const editor = document.getElementById('editor');
-        editor.addEventListener('input', () => { isDirty = true; updateStatus('unsaved', 'Unsaved'); });
+        document.getElementById('editor').addEventListener('input', () => { isDirty = true; updateStatus('unsaved', 'Unsaved'); });
         setInterval(() => { if (isDirty) saveFile(); }, 10000);
     </script>
 </body>
