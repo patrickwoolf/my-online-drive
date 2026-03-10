@@ -31,7 +31,6 @@
         table { border-collapse: collapse; width: 100%; margin: 10px 0; border: 1px solid #cbd5e1; }
         td { border: 1px solid #cbd5e1; padding: 8px; min-width: 40px; }
         img.uploading { opacity: 0.4; filter: blur(2px); cursor: wait; border: 2px dashed #3b82f6; }
-        /* Drag and Drop Highlight */
         .drag-over { background-color: #dbeafe !important; border: 2px dashed #3b82f6 !important; }
     </style>
 </head>
@@ -61,13 +60,22 @@
         <aside id="sidebar" class="bg-white border-r flex flex-col shadow-xl md:shadow-none absolute md:relative h-full">
             <div class="p-3 border-b bg-slate-50 space-y-2">
                 <div class="flex justify-between items-center">
-                    <span class="text-[10px] font-bold uppercase text-slate-400">Explorer</span>
+                    <span class="text-[10px] font-bold uppercase text-slate-400">Files</span>
                     <div class="flex gap-1">
-                        <button onclick="createNewFolder()" class="p-1.5 text-slate-600 hover:bg-blue-100 rounded-md" title="新建資料夾"><i data-lucide="folder-plus" size="16"></i></button>
-                        <button onclick="createNewFile()" class="p-1.5 text-blue-600 hover:bg-blue-100 rounded-md" title="新建文件"><i data-lucide="file-plus" size="16"></i></button>
+                        <button onclick="document.getElementById('anyFileInput').click()" class="p-1.5 text-blue-600 hover:bg-blue-100 rounded-md" title="上傳檔案">
+                            <i data-lucide="upload" size="18"></i>
+                        </button>
+                        <button onclick="createNewFolder()" class="p-1.5 text-slate-600 hover:bg-blue-100 rounded-md" title="新增資料夾">
+                            <i data-lucide="folder-plus" size="18"></i>
+                        </button>
+                        <button onclick="createNewFile()" class="p-1.5 text-blue-600 hover:bg-blue-100 rounded-md" title="新增文件">
+                            <i data-lucide="file-plus" size="18"></i>
+                        </button>
                     </div>
                 </div>
-                <div id="breadcrumb" class="flex items-center gap-1 text-[11px] text-blue-600 font-medium overflow-x-auto whitespace-nowrap">
+                <input type="file" id="anyFileInput" class="hidden" onchange="uploadAnyFile(event)">
+                
+                <div id="breadcrumb" class="flex items-center gap-1 text-[11px] text-blue-600 font-medium overflow-x-auto whitespace-nowrap bg-white p-1 rounded border border-slate-200">
                     <span class="cursor-pointer hover:underline" onclick="navigateTo('')">Root</span>
                 </div>
             </div>
@@ -113,7 +121,7 @@
 
     <script>
         const REPO = 'patrickwoolf/my-online-drive';
-        let currentPath = ''; // 當前所在的目錄
+        let currentPath = ''; 
         let currentFilePath = '', currentFileSha = '', isDirty = false, isSaving = false, zoomLevel = 1.0;
 
         document.addEventListener('DOMContentLoaded', () => {
@@ -124,7 +132,6 @@
 
         const getHeaders = () => ({ 'Authorization': `token ${document.getElementById('ghToken').value}`, 'Accept': 'application/vnd.github.v3+json' });
 
-        // 導覽功能
         function navigateTo(path) {
             currentPath = path;
             updateBreadcrumbs();
@@ -137,18 +144,17 @@
             if (!currentPath) return;
             
             let full = '';
-            currentPath.split('/').forEach(part => {
+            currentPath.split('/').filter(p => p).forEach(part => {
                 full += (full ? '/' : '') + part;
                 const thisPath = full;
-                container.innerHTML += ` <i data-lucide="chevron-right" size="10" class="text-slate-300"></i> <span class="cursor-pointer hover:underline" onclick="navigateTo('${thisPath}')">${part}</span>`;
+                container.innerHTML += ` <i data-lucide="chevron-right" size="10" class="text-slate-300 inline mx-0.5"></i> <span class="cursor-pointer hover:underline" onclick="navigateTo('${thisPath}')">${part}</span>`;
             });
             lucide.createIcons();
         }
 
         async function syncFiles() {
-            const token = document.getElementById('ghToken').value;
-            if (!token) return;
-            localStorage.setItem('gh_token', token);
+            if (!document.getElementById('ghToken').value) return;
+            localStorage.setItem('gh_token', document.getElementById('ghToken').value);
             updateStatus('syncing', 'Syncing...');
             
             try {
@@ -157,10 +163,13 @@
                 const list = document.getElementById('fileList');
                 list.innerHTML = '';
 
-                if (!Array.isArray(files)) throw new Error();
+                if (!Array.isArray(files)) {
+                    list.innerHTML = '<div class="text-center py-4 text-slate-400 text-xs">Empty or Error</div>';
+                    return;
+                }
 
                 files.forEach(f => {
-                    if (f.name === 'assets' && !currentPath) return; // 隱藏根目錄 assets
+                    if (f.name === 'assets' && !currentPath) return;
                     
                     const isDir = f.type === 'dir';
                     const hasExt = f.name.includes('.');
@@ -171,14 +180,19 @@
                     const div = document.createElement('div');
                     div.className = 'file-item';
                     
-                    let icon = 'file';
-                    if (isDir) icon = 'folder';
-                    else if (isEditable) icon = 'file-text';
-                    else if (isPdf) icon = 'file-digit';
+                    const iconName = isDir ? 'folder' : (isEditable ? 'file-text' : (isPdf ? 'file-digit' : 'file'));
+                    const iconColor = isDir ? 'text-amber-400' : (isEditable ? 'text-blue-500' : 'text-slate-400');
+
+                    // 關鍵修正：確保 onclick 事件正確觸發
+                    div.onclick = (e) => {
+                        if (e.target.closest('.delete-btn')) return;
+                        if (isDir) navigateTo(f.path);
+                        else handleFileClick(f.path, f.download_url, isEditable, isPdf);
+                    };
 
                     div.innerHTML = `
-                        <div class="flex items-start gap-3 flex-1 min-w-0" onclick="${isDir ? `MapsTo('${f.path}')` : `handleFileClick('${f.path}', '${f.download_url}', ${isEditable}, ${isPdf})`}">
-                            <i data-lucide="${icon}" size="18" class="${isDir ? 'text-amber-400' : (isEditable ? 'text-blue-500' : 'text-slate-400')} shrink-0 mt-0.5"></i>
+                        <div class="flex items-start gap-3 flex-1 min-w-0">
+                            <i data-lucide="${iconName}" size="18" class="${iconColor} shrink-0 mt-0.5"></i>
                             <span class="file-name">${f.name}</span>
                         </div>
                         <button onclick="event.stopPropagation(); deleteItem('${f.path}', '${f.sha}', ${isDir})" class="delete-btn"><i data-lucide="trash-2" size="14"></i></button>`;
@@ -204,13 +218,8 @@
             } else { window.open(url, '_blank'); }
         }
 
-        // 修改後的刪除：支援資料夾（GitHub API 刪除資料夾需刪除其內所有檔案，這裡簡化處理檔案）
         async function deleteItem(path, sha, isDir) {
-            if (isDir) {
-                alert("GitHub API 不支援直接刪除非空資料夾。請先手動刪除資料夾內的檔案。");
-                return;
-            }
-            if (!confirm(`確定刪除 ${path}？`)) return;
+            if (!confirm(`確定刪除 ${isDir ? '資料夾' : '檔案'} ${path}？`)) return;
             const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { 
                 method: 'DELETE', 
                 headers: getHeaders(), 
@@ -219,23 +228,25 @@
             if (res.ok) { 
                 if (currentFilePath === path) { document.getElementById('editor').innerHTML = ''; currentFilePath = ''; } 
                 syncFiles(); 
+            } else if (isDir) {
+                alert("GitHub API 無法刪除含有檔案的資料夾。請先刪除內部的檔案。");
             }
         }
 
         async function createNewFile() {
-            const name = prompt("輸入檔案名稱 (例如: note.html):"); 
+            const name = prompt("Filename (e.g. index.html):"); 
             if (!name) return;
             const fullPath = currentPath ? `${currentPath}/${name}` : name;
             currentFilePath = fullPath; 
+            currentFileSha = ''; // 新檔案無 SHA
             document.getElementById('editor').innerHTML = '<div>New Page</div>';
             await saveFile(); 
             syncFiles();
         }
 
         async function createNewFolder() {
-            const name = prompt("輸入資料夾名稱:");
+            const name = prompt("Folder Name:");
             if (!name) return;
-            // GitHub 不存在空資料夾，我們建立一個 .keep 檔來模擬
             const fullPath = currentPath ? `${currentPath}/${name}/.keep` : `${name}/.keep`;
             const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${fullPath}`, {
                 method: 'PUT',
@@ -245,22 +256,10 @@
             if (res.ok) syncFiles();
         }
 
-        // 拖放上傳處理
-        async function handleSidebarDrop(e) {
-            e.preventDefault();
-            this.classList.remove('drag-over');
-            const files = e.dataTransfer.files;
-            for (let file of files) {
-                await uploadFileDirect(file, currentPath);
-            }
-        }
-
-        function handleGlobalDrop(e) {
-            // 避免在編輯器內拖放文字時觸發上傳
-            if (e.target.closest('#editor')) return;
-            e.preventDefault();
-            const files = e.dataTransfer.files;
-            if (files.length > 0) uploadFileDirect(files[0], currentPath);
+        async function uploadAnyFile(e) {
+            const file = e.target.files[0]; if (!file) return;
+            await uploadFileDirect(file, currentPath);
+            e.target.value = '';
         }
 
         async function uploadFileDirect(file, targetDir) {
@@ -278,13 +277,29 @@
             };
         }
 
-        // 原有功能保持不變...
+        async function handleSidebarDrop(e) {
+            e.preventDefault();
+            this.classList.remove('drag-over');
+            const files = e.dataTransfer.files;
+            for (let file of files) { await uploadFileDirect(file, currentPath); }
+        }
+
+        function handleGlobalDrop(e) {
+            if (e.target.closest('#editor')) return;
+            e.preventDefault();
+            const files = e.dataTransfer.files;
+            if (files.length > 0) uploadFileDirect(files[0], currentPath);
+        }
+
         async function saveFile() {
             if (!currentFilePath || isSaving) return;
             isSaving = true; updateStatus('syncing', 'Saving...');
             const content = btoa(unescape(encodeURIComponent(document.getElementById('editor').innerHTML)));
+            const body = { message: 'save', content };
+            if (currentFileSha) body.sha = currentFileSha;
+            
             const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentFilePath}`, {
-                method: 'PUT', headers: getHeaders(), body: JSON.stringify({ message: 'save', content, sha: currentFileSha })
+                method: 'PUT', headers: getHeaders(), body: JSON.stringify(body)
             });
             if (res.ok) { const d = await res.json(); currentFileSha = d.content.sha; isDirty = false; updateStatus('saved', 'Saved'); }
             isSaving = false;
@@ -298,7 +313,6 @@
             reader.readAsDataURL(file);
             reader.onload = async () => {
                 const base64 = reader.result.split(',')[1];
-                // 圖片統一放在根目錄的 assets/檔案名/ 之下
                 const fileName = currentFilePath.split('/').pop().split('.')[0];
                 const res = await fetch(`https://api.github.com/repos/${REPO}/contents/assets/${fileName}/${Date.now()}.jpg`, {
                     method: 'PUT', headers: getHeaders(), body: JSON.stringify({ message: 'img', content: base64 })
