@@ -74,12 +74,10 @@
                     </div>
                 </div>
                 <input type="file" id="anyFileInput" class="hidden" onchange="uploadAnyFile(event)">
-                
                 <div id="breadcrumb" class="flex items-center gap-1 text-[11px] text-blue-600 font-medium overflow-x-auto whitespace-nowrap bg-white p-1 rounded border border-slate-200">
                     <span class="cursor-pointer hover:underline" onclick="navigateTo('')">Root</span>
                 </div>
             </div>
-            
             <div id="fileList" class="flex-1 overflow-y-auto p-2 pb-20 space-y-0.5" ondragover="this.classList.add('drag-over'); event.preventDefault();" ondragleave="this.classList.remove('drag-over')" ondrop="handleSidebarDrop(event)">
                 <div class="text-center py-4 text-slate-400 text-xs">Loading...</div>
             </div>
@@ -112,7 +110,6 @@
                     <span id="currentFileName" class="text-xs font-medium text-slate-400 truncate max-w-[100px] block">No file</span>
                 </div>
             </div>
-
             <div id="scroll-container">
                 <div id="editor" contenteditable="true" class="prose max-w-none text-base"></div>
             </div>
@@ -142,7 +139,6 @@
             const container = document.getElementById('breadcrumb');
             container.innerHTML = `<span class="cursor-pointer hover:underline" onclick="navigateTo('')">Root</span>`;
             if (!currentPath) return;
-            
             let full = '';
             currentPath.split('/').filter(p => p).forEach(part => {
                 full += (full ? '/' : '') + part;
@@ -156,40 +152,35 @@
             if (!document.getElementById('ghToken').value) return;
             localStorage.setItem('gh_token', document.getElementById('ghToken').value);
             updateStatus('syncing', 'Syncing...');
-            
             try {
                 const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentPath}?t=${Date.now()}`, { headers: getHeaders() });
                 const files = await res.json();
                 const list = document.getElementById('fileList');
                 list.innerHTML = '';
+                if (!Array.isArray(files)) return;
 
-                if (!Array.isArray(files)) {
-                    list.innerHTML = '<div class="text-center py-4 text-slate-400 text-xs">Empty or Error</div>';
-                    return;
-                }
+                // 排序：資料夾置頂
+                files.sort((a, b) => {
+                    if (a.type === b.type) return a.name.localeCompare(b.name);
+                    return a.type === 'dir' ? -1 : 1;
+                });
 
                 files.forEach(f => {
                     if (f.name === 'assets' && !currentPath) return;
-                    
                     const isDir = f.type === 'dir';
                     const hasExt = f.name.includes('.');
                     const ext = hasExt ? f.name.split('.').pop().toLowerCase() : '';
                     const isEditable = !isDir && (!hasExt || ['html', 'txt', 'md'].includes(ext));
                     const isPdf = ext === 'pdf';
-
                     const div = document.createElement('div');
                     div.className = 'file-item';
-                    
                     const iconName = isDir ? 'folder' : (isEditable ? 'file-text' : (isPdf ? 'file-digit' : 'file'));
                     const iconColor = isDir ? 'text-amber-400' : (isEditable ? 'text-blue-500' : 'text-slate-400');
-
-                    // 關鍵修正：確保 onclick 事件正確觸發
                     div.onclick = (e) => {
                         if (e.target.closest('.delete-btn')) return;
                         if (isDir) navigateTo(f.path);
                         else handleFileClick(f.path, f.download_url, isEditable, isPdf);
                     };
-
                     div.innerHTML = `
                         <div class="flex items-start gap-3 flex-1 min-w-0">
                             <i data-lucide="${iconName}" size="18" class="${iconColor} shrink-0 mt-0.5"></i>
@@ -213,94 +204,53 @@
                 document.getElementById('currentFileName').innerText = path.split('/').pop();
                 isDirty = false; updateStatus('saved', 'Opened');
                 if (window.innerWidth < 768) toggleSidebar();
-            } else if (isPdf) {
-                window.open(url, '_blank');
-            } else { window.open(url, '_blank'); }
+            } else if (isPdf) { window.open(url, '_blank'); } else { window.open(url, '_blank'); }
         }
 
         async function deleteItem(path, sha, isDir) {
             if (!confirm(`確定刪除 ${isDir ? '資料夾' : '檔案'} ${path}？`)) return;
-            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { 
-                method: 'DELETE', 
-                headers: getHeaders(), 
-                body: JSON.stringify({ message: 'delete', sha: sha }) 
-            });
-            if (res.ok) { 
-                if (currentFilePath === path) { document.getElementById('editor').innerHTML = ''; currentFilePath = ''; } 
-                syncFiles(); 
-            } else if (isDir) {
-                alert("GitHub API 無法刪除含有檔案的資料夾。請先刪除內部的檔案。");
-            }
+            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { method: 'DELETE', headers: getHeaders(), body: JSON.stringify({ message: 'delete', sha: sha }) });
+            if (res.ok) { if (currentFilePath === path) { document.getElementById('editor').innerHTML = ''; currentFilePath = ''; } syncFiles(); }
+            else if (isDir) alert("GitHub 不支援刪除非空資料夾。請先清空內部檔案。");
         }
 
         async function createNewFile() {
-            const name = prompt("Filename (e.g. index.html):"); 
-            if (!name) return;
+            const name = prompt("Filename:"); if (!name) return;
             const fullPath = currentPath ? `${currentPath}/${name}` : name;
-            currentFilePath = fullPath; 
-            currentFileSha = ''; // 新檔案無 SHA
+            currentFilePath = fullPath; currentFileSha = '';
             document.getElementById('editor').innerHTML = '<div>New Page</div>';
-            await saveFile(); 
-            syncFiles();
+            await saveFile(); syncFiles();
         }
 
         async function createNewFolder() {
-            const name = prompt("Folder Name:");
-            if (!name) return;
+            const name = prompt("Folder Name:"); if (!name) return;
             const fullPath = currentPath ? `${currentPath}/${name}/.keep` : `${name}/.keep`;
-            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${fullPath}`, {
-                method: 'PUT',
-                headers: getHeaders(),
-                body: JSON.stringify({ message: 'create folder', content: btoa(' ') })
-            });
+            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${fullPath}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify({ message: 'create folder', content: btoa(' ') }) });
             if (res.ok) syncFiles();
         }
 
-        async function uploadAnyFile(e) {
-            const file = e.target.files[0]; if (!file) return;
-            await uploadFileDirect(file, currentPath);
-            e.target.value = '';
-        }
+        async function uploadAnyFile(e) { const file = e.target.files[0]; if (file) await uploadFileDirect(file, currentPath); e.target.value = ''; }
 
         async function uploadFileDirect(file, targetDir) {
             updateStatus('syncing', 'Uploading...');
-            const reader = new FileReader();
-            reader.readAsDataURL(file);
+            const reader = new FileReader(); reader.readAsDataURL(file);
             reader.onload = async () => {
                 const base64 = reader.result.split(',')[1];
                 const fullPath = targetDir ? `${targetDir}/${file.name}` : file.name;
-                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${fullPath}`, {
-                    method: 'PUT', headers: getHeaders(), body: JSON.stringify({ message: `Upload: ${file.name}`, content: base64 })
-                });
-                if (res.ok) { updateStatus('saved', 'Uploaded'); syncFiles(); }
-                else { updateStatus('unsaved', 'Upload Failed'); }
+                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${fullPath}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify({ message: `Upload: ${file.name}`, content: base64 }) });
+                if (res.ok) { updateStatus('saved', 'Uploaded'); syncFiles(); } else updateStatus('unsaved', 'Upload Failed');
             };
         }
 
-        async function handleSidebarDrop(e) {
-            e.preventDefault();
-            this.classList.remove('drag-over');
-            const files = e.dataTransfer.files;
-            for (let file of files) { await uploadFileDirect(file, currentPath); }
-        }
-
-        function handleGlobalDrop(e) {
-            if (e.target.closest('#editor')) return;
-            e.preventDefault();
-            const files = e.dataTransfer.files;
-            if (files.length > 0) uploadFileDirect(files[0], currentPath);
-        }
-
+        async function handleSidebarDrop(e) { e.preventDefault(); this.classList.remove('drag-over'); const files = e.dataTransfer.files; for (let file of files) { await uploadFileDirect(file, currentPath); } }
+        function handleGlobalDrop(e) { if (!e.target.closest('#editor')) { e.preventDefault(); const files = e.dataTransfer.files; if (files.length > 0) uploadFileDirect(files[0], currentPath); } }
         async function saveFile() {
             if (!currentFilePath || isSaving) return;
             isSaving = true; updateStatus('syncing', 'Saving...');
             const content = btoa(unescape(encodeURIComponent(document.getElementById('editor').innerHTML)));
             const body = { message: 'save', content };
             if (currentFileSha) body.sha = currentFileSha;
-            
-            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentFilePath}`, {
-                method: 'PUT', headers: getHeaders(), body: JSON.stringify(body)
-            });
+            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentFilePath}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(body) });
             if (res.ok) { const d = await res.json(); currentFileSha = d.content.sha; isDirty = false; updateStatus('saved', 'Saved'); }
             isSaving = false;
         }
@@ -309,28 +259,18 @@
             if (!currentFilePath) { alert("請先開啟一個檔案！"); return; }
             const tempId = 'img-' + Date.now();
             document.execCommand('insertHTML', false, `<img src="${URL.createObjectURL(file)}" id="${tempId}" class="uploading">`);
-            const reader = new FileReader(); 
-            reader.readAsDataURL(file);
+            const reader = new FileReader(); reader.readAsDataURL(file);
             reader.onload = async () => {
                 const base64 = reader.result.split(',')[1];
                 const fileName = currentFilePath.split('/').pop().split('.')[0];
-                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/assets/${fileName}/${Date.now()}.jpg`, {
-                    method: 'PUT', headers: getHeaders(), body: JSON.stringify({ message: 'img', content: base64 })
-                });
-                if (res.ok) {
-                    const d = await res.json();
-                    const img = document.getElementById(tempId);
-                    img.src = d.content.download_url; img.classList.remove('uploading');
-                    saveFile();
-                }
+                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/assets/${fileName}/${Date.now()}.jpg`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify({ message: 'img', content: base64 }) });
+                if (res.ok) { const d = await res.json(); const img = document.getElementById(tempId); img.src = d.content.download_url; img.classList.remove('uploading'); saveFile(); }
             };
         }
 
         function insertTable() { document.execCommand('insertHTML', false, '<table><tr><td></td><td></td></tr><tr><td></td><td></td></tr></table><p><br></p>'); }
         function tableAction(cmd) {
-            const sel = window.getSelection();
-            const td = sel.anchorNode?.parentElement?.closest('td');
-            if (!td) return;
+            const sel = window.getSelection(); const td = sel.anchorNode?.parentElement?.closest('td'); if (!td) return;
             const tr = td.parentElement, table = tr.closest('table');
             const colIdx = td.cellIndex, rowIdx = tr.rowIndex;
             if (cmd === 'addRowAbove') { const r = table.insertRow(rowIdx); for(let i=0; i<tr.cells.length; i++) r.insertCell(); }
@@ -350,10 +290,7 @@
         function exec(c) { document.execCommand(c, false, null); }
         const editor = document.getElementById('editor');
         editor.addEventListener('input', () => { isDirty = true; updateStatus('unsaved', 'Unsaved'); });
-        editor.addEventListener('paste', (e) => {
-            const items = (e.clipboardData || e.originalEvent.clipboardData).items;
-            for (let item of items) { if (item.kind === 'file' && item.type.startsWith('image/')) { e.preventDefault(); processImageUpload(item.getAsFile()); } }
-        });
+        editor.addEventListener('paste', (e) => { const items = (e.clipboardData || e.originalEvent.clipboardData).items; for (let item of items) { if (item.kind === 'file' && item.type.startsWith('image/')) { e.preventDefault(); processImageUpload(item.getAsFile()); } } });
         setInterval(() => { if (isDirty) saveFile(); }, 10000);
     </script>
 </body>
