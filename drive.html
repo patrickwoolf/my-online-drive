@@ -11,7 +11,6 @@
         #editor { min-height: 100%; padding: 2rem; outline: none; background: white; margin: 0; transition: transform 0.2s ease-in-out; transform-origin: top left; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); width: 100%; box-sizing: border-box; }
         #editor * { font-family: inherit !important; font-size: 1rem !important; color: #334155 !important; background-color: transparent !important; line-height: 1.5 !important; }
         
-        /* 表格基本樣式 */
         #editor table { border-collapse: collapse; width: 100%; margin: 10px 0; border: 1px solid #cbd5e1; }
         #editor td { border: 1px solid #cbd5e1; padding: 8px; min-width: 40px; }
 
@@ -35,7 +34,7 @@
         .file-name { 
             font-size: 0.875rem; color: #334155; font-weight: 500; flex: 1; 
             word-break: break-all; white-space: normal; line-height: 1.25rem;
-            padding-right: 40px; /* 預留空間給右側按鈕 */
+            padding-right: 40px; 
         }
         
         /* Hover 按鈕：右上角遮擋 */
@@ -46,7 +45,6 @@
             gap: 2px; z-index: 10;
         }
         .file-item:hover .action-btns { display: flex; }
-        
         .icon-btn { color: #64748b; padding: 4px; border-radius: 4px; transition: all 0.2s; }
         .move-btn:hover { color: #3b82f6; background: #dbeafe; }
         .delete-btn:hover { color: #ef4444; background: #fee2e2; }
@@ -78,9 +76,9 @@
                 <div class="flex justify-between items-center">
                     <span class="text-[10px] font-bold uppercase text-slate-400">Files</span>
                     <div class="flex gap-1">
-                        <button onclick="document.getElementById('anyFileInput').click()" class="p-1.5 text-blue-600 hover:bg-blue-100 rounded-md"><i data-lucide="upload" size="18"></i></button>
-                        <button onclick="createNewFolder()" class="p-1.5 text-slate-600 hover:bg-blue-100 rounded-md"><i data-lucide="folder-plus" size="18"></i></button>
-                        <button onclick="createNewFile()" class="p-1.5 text-blue-600 hover:bg-blue-100 rounded-md"><i data-lucide="file-plus" size="18"></i></button>
+                        <button onclick="document.getElementById('anyFileInput').click()" class="p-1.5 text-blue-600 hover:bg-blue-100 rounded-md" title="上傳檔案"><i data-lucide="upload" size="18"></i></button>
+                        <button onclick="createNewFolder()" class="p-1.5 text-slate-600 hover:bg-blue-100 rounded-md" title="新增資料夾"><i data-lucide="folder-plus" size="18"></i></button>
+                        <button onclick="createNewFile()" class="p-1.5 text-blue-600 hover:bg-blue-100 rounded-md" title="新增文件"><i data-lucide="file-plus" size="18"></i></button>
                     </div>
                 </div>
                 <input type="file" id="anyFileInput" class="hidden" onchange="uploadAnyFile(event)">
@@ -186,7 +184,87 @@
             } catch (err) { updateStatus('unsaved', 'Error'); }
         }
 
-        // 縮放功能
+        async function createNewFile() {
+            const name = prompt("請輸入檔名 (例如: note.html):");
+            if (!name) return;
+            const path = currentPath ? `${currentPath}/${name}` : name;
+            currentFilePath = path; currentFileSha = '';
+            document.getElementById('editor').innerHTML = '<div>New File</div>';
+            await saveFile();
+            syncFiles();
+        }
+
+        async function createNewFolder() {
+            const name = prompt("請輸入資料夾名稱:");
+            if (!name) return;
+            const path = currentPath ? `${currentPath}/${name}/.keep` : `${name}/.keep`;
+            updateStatus('syncing', 'Creating Folder...');
+            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, {
+                method: 'PUT', headers: getHeaders(), body: JSON.stringify({ message: 'create folder', content: btoa(' ') })
+            });
+            if (res.ok) syncFiles();
+        }
+
+        async function uploadAnyFile(e) {
+            const file = e.target.files[0]; if (!file) return;
+            const reader = new FileReader();
+            reader.onload = async () => {
+                const base64 = reader.result.split(',')[1];
+                const path = currentPath ? `${currentPath}/${file.name}` : file.name;
+                updateStatus('syncing', 'Uploading...');
+                await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, {
+                    method: 'PUT', headers: getHeaders(), body: JSON.stringify({ message: 'upload', content: base64 })
+                });
+                syncFiles();
+            };
+            reader.readAsDataURL(file);
+        }
+
+        async function handleFileClick(path) {
+            updateStatus('syncing', 'Loading...');
+            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}?t=${Date.now()}`, { headers: getHeaders() });
+            const data = await res.json();
+            document.getElementById('editor').innerHTML = decodeURIComponent(escape(atob(data.content)));
+            currentFilePath = path; currentFileSha = data.sha;
+            document.getElementById('currentFileName').innerText = path.split('/').pop();
+            updateStatus('saved', 'Opened');
+        }
+
+        async function saveFile() {
+            if (!currentFilePath || isSaving) return;
+            isSaving = true; updateStatus('syncing', 'Saving...');
+            const content = btoa(unescape(encodeURIComponent(document.getElementById('editor').innerHTML)));
+            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentFilePath}`, {
+                method: 'PUT', headers: getHeaders(), body: JSON.stringify({ message: 'save', content, sha: currentFileSha })
+            });
+            if (res.ok) { 
+                const d = await res.json(); 
+                currentFileSha = d.content.sha; 
+                isDirty = false; 
+                updateStatus('saved', 'Saved'); 
+            }
+            isSaving = false;
+        }
+
+        async function handleImageSelect(e) {
+            const file = e.target.files[0]; if (!file) return;
+            const reader = new FileReader();
+            reader.onload = async () => {
+                const base64 = reader.result.split(',')[1];
+                const fileName = `assets/${Date.now()}-${file.name}`;
+                updateStatus('syncing', 'Uploading Image...');
+                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${fileName}`, {
+                    method: 'PUT', headers: getHeaders(), body: JSON.stringify({ message: 'upload image', content: base64 })
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    const imgHtml = `<img src="${data.content.download_url}" style="max-width:100%;">`;
+                    document.execCommand('insertHTML', false, imgHtml);
+                }
+            };
+            reader.readAsDataURL(file);
+        }
+
         function changeZoom(delta) { zoom = Math.max(0.5, Math.min(2, zoom + delta)); applyZoom(); }
         function resetZoom() { zoom = 1; applyZoom(); }
         function applyZoom() { 
@@ -194,7 +272,6 @@
             document.getElementById('zoomPercent').innerText = `${Math.round(zoom * 100)}%`;
         }
 
-        // 表格功能
         function insertTable() {
             const html = `<table><tr><td></td><td></td></tr><tr><td></td><td></td></tr></table><p><br></p>`;
             document.execCommand('insertHTML', false, html);
@@ -206,7 +283,6 @@
             if (!td) return;
             const tr = td.parentElement, table = tr.closest('table');
             const colIdx = td.cellIndex, rowIdx = tr.rowIndex;
-
             if (cmd === 'addRowAbove') {
                 const r = table.insertRow(rowIdx);
                 for(let i=0; i<tr.cells.length; i++) r.insertCell().innerHTML = "";
@@ -224,16 +300,6 @@
                 else table.remove();
             }
             isDirty = true;
-        }
-
-        async function handleFileClick(path) {
-            updateStatus('syncing', 'Loading...');
-            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { headers: getHeaders() });
-            const data = await res.json();
-            document.getElementById('editor').innerHTML = decodeURIComponent(escape(atob(data.content)));
-            currentFilePath = path; currentFileSha = data.sha;
-            document.getElementById('currentFileName').innerText = path.split('/').pop();
-            updateStatus('saved', 'Opened');
         }
 
         async function moveItem(oldPath, sha) {
@@ -262,9 +328,14 @@
         }
 
         function toggleSidebar() { document.getElementById('sidebar').classList.toggle('sidebar-closed'); }
-        function updateStatus(s, t) { document.querySelector('.status-dot').className = `status-dot status-${s} mr-1`; document.getElementById('statusText').innerText = t; }
+        function updateStatus(s, t) { 
+            const dot = document.querySelector('.status-dot');
+            if (dot) dot.className = `status-dot status-${s} mr-1`; 
+            document.getElementById('statusText').innerText = t; 
+        }
         function exec(c) { document.execCommand(c, false, null); }
         document.getElementById('editor').addEventListener('input', () => { isDirty = true; updateStatus('unsaved', 'Unsaved'); });
+        setInterval(() => { if (isDirty) saveFile(); }, 15000);
     </script>
 </body>
 </html>
