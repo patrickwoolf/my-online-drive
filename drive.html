@@ -10,61 +10,48 @@
         #scroll-container { height: calc(100vh - 120px); overflow-y: auto; -webkit-overflow-scrolling: touch; background: #f8fafc; }
         #editor { min-height: 100%; padding: 2rem; outline: none; background: white; margin: 0; transition: transform 0.2s ease-in-out; transform-origin: top left; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); width: 100%; box-sizing: border-box; }
         #editor * { font-family: inherit !important; font-size: 1rem !important; color: #334155 !important; background-color: transparent !important; line-height: 1.5 !important; }
+        
+        /* 表格樣式強設定 */
+        #editor table { border-collapse: collapse; width: 100%; margin: 10px 0; border: 1px solid #cbd5e1 !important; }
+        #editor td { border: 1px solid #cbd5e1 !important; padding: 8px; min-width: 40px; height: 1.5rem; }
+
         .toolbar-scroll { display: flex; overflow-x: auto; white-space: nowrap; -ms-overflow-style: none; scrollbar-width: none; }
+        .toolbar-scroll::-webkit-scrollbar { display: none; }
+        
         #sidebar { transition: all 0.3s ease; width: 280px; z-index: 50; flex-shrink: 0; }
         .sidebar-closed { margin-left: -280px; }
-        @media (max-width: 768px) { #sidebar { position: fixed; height: 100svh; } }
         
         .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
         .status-saved { background: #22c55e; }
         .status-unsaved { background: #ef4444; }
         .status-syncing { background: #3b82f6; animation: pulse 1s infinite; }
         
-        /* 檔案項目：允許高度隨文字內容增長 */
+        /* 檔案項目：多行顯示 */
         .file-item { 
-            display: flex; 
-            align-items: flex-start; /* 對齊頂部，方便多行顯示 */
-            gap: 0.75rem; 
-            padding: 0.75rem; 
-            border-radius: 0.5rem; 
-            cursor: pointer; 
-            transition: background 0.2s; 
-            position: relative; 
-            min-height: 44px;
+            display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.75rem; 
+            border-radius: 0.5rem; cursor: pointer; transition: background 0.2s; position: relative; 
         }
         .file-item:hover { background-color: #eff6ff; }
-        
-        /* 核心修改：允許自動換行顯示全部名稱 */
         .file-name { 
-            font-size: 0.875rem; 
-            color: #334155; 
-            font-weight: 500; 
-            flex: 1; 
-            word-break: break-all; /* 長檔名強制換行 */
-            white-space: normal;  /* 允許換行 */
-            line-height: 1.25rem;
-            padding-right: 20px;   /* 預留空間避免文字太靠近邊緣 */
+            font-size: 0.875rem; color: #334155; font-weight: 500; flex: 1; 
+            word-break: break-all; white-space: normal; line-height: 1.25rem;
+            padding-right: 45px; /* 為右上角按鈕預留空間 */
         }
         
-        /* 按鈕組：Hover 時擋住文字，固定在右上角 */
+        /* Hover 按鈕：絕對定位在右上角，遮擋文字 */
         .action-btns { 
-            display: none; 
-            position: absolute; 
-            right: 0.25rem; 
-            top: 0.25rem;
-            background: rgba(239, 246, 255, 0.95); /* 略微透明的藍色背景 */
-            backdrop-filter: blur(2px); /* 磨砂玻璃效果 */
-            padding: 4px;
-            border-radius: 6px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-            gap: 2px;
-            z-index: 10;
+            display: none; position: absolute; right: 0.4rem; top: 0.4rem;
+            background: rgba(239, 246, 255, 0.95); backdrop-filter: blur(2px);
+            padding: 2px; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            gap: 2px; z-index: 10;
         }
         .file-item:hover .action-btns { display: flex; }
         
         .icon-btn { color: #64748b; padding: 4px; border-radius: 4px; transition: all 0.2s; }
         .move-btn:hover { color: #3b82f6; background: #dbeafe; }
         .delete-btn:hover { color: #ef4444; background: #fee2e2; }
+
+        img.uploading { opacity: 0.4; filter: blur(2px); border: 2px dashed #3b82f6; }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900 font-sans h-screen flex flex-col overflow-hidden">
@@ -103,22 +90,32 @@
                     <span class="cursor-pointer hover:underline" onclick="navigateTo('')">Root</span>
                 </div>
             </div>
-            <div id="fileList" class="flex-1 overflow-y-auto p-2 pb-20 space-y-1">
-                </div>
+            <div id="fileList" class="flex-1 overflow-y-auto p-2 pb-20 space-y-1"></div>
         </aside>
 
         <main class="flex-1 flex flex-col bg-white overflow-hidden">
             <div class="p-1 border-b bg-slate-50/50 toolbar-scroll flex items-center gap-1">
-                <button onclick="exec('bold')" class="p-2 hover:bg-white rounded"><i data-lucide="bold" size="16"></i></button>
-                <button onclick="exec('italic')" class="p-2 hover:bg-white rounded"><i data-lucide="italic" size="16"></i></button>
+                <button onclick="exec('bold')" class="p-2 hover:bg-white rounded" title="粗體"><i data-lucide="bold" size="16"></i></button>
+                <button onclick="exec('italic')" class="p-2 hover:bg-white rounded" title="斜體"><i data-lucide="italic" size="16"></i></button>
                 <div class="h-6 w-px bg-slate-300 mx-1"></div>
-                <button onclick="insertTable()" class="p-2 text-slate-700 hover:bg-white rounded"><i data-lucide="table" size="18"></i></button>
-                <button onclick="document.getElementById('fileInput').click()" class="p-2 text-blue-600 hover:bg-white rounded"><i data-lucide="image-plus" size="18"></i></button>
+                
+                <button onclick="insertTable()" class="p-2 text-slate-700 hover:bg-white rounded" title="插入表格"><i data-lucide="table" size="18"></i></button>
+                <div class="flex bg-slate-200/50 rounded p-0.5 gap-px">
+                    <button onclick="tableAction('addRowBelow')" class="p-1.5 hover:bg-white rounded" title="下方新增列"><i data-lucide="arrow-down-to-line" size="14"></i></button>
+                    <button onclick="tableAction('addColRight')" class="p-1.5 hover:bg-white rounded" title="右側新增欄"><i data-lucide="arrow-right-to-line" size="14"></i></button>
+                    <button onclick="tableAction('deleteRow')" class="p-1.5 hover:bg-red-50 text-red-400 rounded" title="刪除列"><i data-lucide="list-x" size="14"></i></button>
+                    <button onclick="tableAction('deleteColumn')" class="p-1.5 hover:bg-red-50 text-red-400 rounded" title="刪除欄"><i data-lucide="columns-2" size="14"></i></button>
+                </div>
+                
+                <div class="h-6 w-px bg-slate-300 mx-1"></div>
+                <button onclick="document.getElementById('fileInput').click()" class="p-2 text-blue-600 hover:bg-white rounded" title="圖片"><i data-lucide="image-plus" size="18"></i></button>
                 <input type="file" id="fileInput" class="hidden" accept="image/*" onchange="handleImageSelect(event)">
+                
                 <div class="ml-auto pr-2">
                     <span id="currentFileName" class="text-xs font-medium text-slate-400 truncate max-w-[150px] block">No file</span>
                 </div>
             </div>
+            
             <div id="scroll-container">
                 <div id="editor" contenteditable="true" class="prose max-w-none"></div>
             </div>
@@ -187,6 +184,34 @@
             } catch (err) { updateStatus('unsaved', 'Sync Error'); }
         }
 
+        // --- 表格操作邏輯 ---
+        function insertTable() {
+            const html = `<table style="width:100%; border:1px solid #cbd5e1;"><tr><td></td><td></td></tr><tr><td></td><td></td></tr></table><p><br></p>`;
+            document.execCommand('insertHTML', false, html);
+        }
+
+        function tableAction(cmd) {
+            const sel = window.getSelection();
+            const td = sel.anchorNode?.parentElement?.closest('td');
+            if (!td) return;
+            const tr = td.parentElement, table = tr.closest('table');
+            const colIdx = td.cellIndex, rowIdx = tr.rowIndex;
+
+            if (cmd === 'addRowBelow') {
+                const r = table.insertRow(rowIdx + 1);
+                for(let i=0; i<tr.cells.length; i++) r.insertCell().innerHTML = "";
+            } else if (cmd === 'addColRight') {
+                Array.from(table.rows).forEach(r => r.insertCell(colIdx + 1).innerHTML = "");
+            } else if (cmd === 'deleteRow') {
+                table.rows.length > 1 ? table.deleteRow(rowIdx) : table.remove();
+            } else if (cmd === 'deleteColumn') {
+                if (tr.cells.length > 1) Array.from(table.rows).forEach(r => r.deleteCell(colIdx));
+                else table.remove();
+            }
+            isDirty = true;
+        }
+
+        // --- 基礎功能 ---
         async function moveItem(oldPath, sha) {
             const newPath = prompt("移動至新路徑/檔名：", oldPath);
             if (!newPath || newPath === oldPath) return;
@@ -194,7 +219,7 @@
                 const resContent = await fetch(`https://api.github.com/repos/${REPO}/contents/${oldPath}`, { headers: getHeaders() });
                 const data = await resContent.json();
                 const resCreate = await fetch(`https://api.github.com/repos/${REPO}/contents/${newPath}`, {
-                    method: 'PUT', headers: getHeaders(), body: JSON.stringify({ message: `Move to ${newPath}`, content: data.content })
+                    method: 'PUT', headers: getHeaders(), body: JSON.stringify({ message: `Move`, content: data.content })
                 });
                 if (resCreate.ok) {
                     await fetch(`https://api.github.com/repos/${REPO}/contents/${oldPath}`, {
@@ -215,13 +240,6 @@
                 document.getElementById('currentFileName').innerText = path.split('/').pop();
                 updateStatus('saved', 'Opened');
             } catch(e) { window.open(url, '_blank'); }
-        }
-
-        async function deleteItem(path, sha, isDir) {
-            if (confirm(`確定刪除？`)) {
-                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { method: 'DELETE', headers: getHeaders(), body: JSON.stringify({ message: 'delete', sha: sha }) });
-                if (res.ok) syncFiles();
-            }
         }
 
         async function saveFile() {
@@ -260,7 +278,7 @@
             };
         }
 
-        function toggleSidebar() { document.getElementById('sidebar').classList.toggle('hidden'); }
+        function toggleSidebar() { document.getElementById('sidebar').classList.toggle('sidebar-closed'); }
         function updateStatus(s, t) { document.querySelector('.status-dot').className = `status-dot status-${s} mr-1`; document.getElementById('statusText').innerText = t; }
         function exec(c) { document.execCommand(c, false, null); }
         document.getElementById('editor').addEventListener('input', () => { isDirty = true; updateStatus('unsaved', 'Unsaved'); });
