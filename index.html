@@ -50,17 +50,16 @@
             background: white;
             z-index: 10;
         }
-        
-        /* 內容超過時，由 JS 加上此 class 變為浮動模式 */
+                
+        /* 只有在內容溢出時才啟動的浮動狀態 */
         .cell-editor.floating {
             position: absolute;
-            top: 0 !important;      /* 強制對齊表格上緣 */
             left: 0;
             z-index: 1000;
             width: 300px;
             min-width: 100%;
             height: auto !important;
-            max-height: 80vh !important;
+            max-height: 70vh !important; /* 稍微縮小一點避免貼死底部 */
             background: white;
             padding: 10px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.3);
@@ -316,30 +315,33 @@
                 
                 td.onmousedown = (e) => { isSelecting = true; startCell = {r, c}; endCell = {r, c}; highlightRange(); };
                 td.onmouseover = () => { if(isSelecting) { endCell = {r, c}; highlightRange(); } };
-                
+                                
                 editor.onfocus = () => {
-                    // 檢查內容高度是否超過格子的實際高度
-                    // scrollHeight 是內容總高，offsetHeight 是格子目前看到的高
+                    // 判斷文字是否超過格子的顯示高度
                     if (editor.scrollHeight > editor.offsetHeight) {
                         editor.classList.add('floating');
-                        
-                        // 為了讓它對齊「表格」上緣，我們需要計算表格與當前格子的垂直距離
+                
                         const table = document.getElementById('main-table');
-                        const tableRect = table.getBoundingClientRect();
+                        const container = document.getElementById('editor-container');
                         const tdRect = td.getBoundingClientRect();
-                        
-                        // 計算位移量：表格頂部 - 格子頂部 = 往回拉的距離
-                        const offsetTop = tableRect.top - tdRect.top;
-                        editor.style.marginTop = offsetTop + "px";
+                        const containerRect = container.getBoundingClientRect();
+                
+                        // 計算邏輯：
+                        // 我們希望編輯框的頂端對齊 container 的頂端 (視覺上的表格上緣)
+                        // 由於 editor 是絕對定位在 td 內，
+                        // 它的 top: 0 代表 td 的頂端。
+                        // 所以 offset = container 的視窗頂部 - td 的視窗頂部
+                        let offsetTop = containerRect.top - tdRect.top;
+                
+                        // 套用位移，這會讓編輯框無視原本位置，直接衝到目前視野的最上方
+                        editor.style.top = offsetTop + "px";
                     }
                 };
                 
                 editor.onblur = () => {
-                    // 恢復原狀
                     editor.classList.remove('floating');
-                    editor.style.marginTop = "";
+                    editor.style.top = ""; // 恢復原狀
                     
-                    // 原有的存檔邏輯
                     if(sheet.data[r][c] !== editor.innerText) { 
                         pushHistory(); 
                         sheet.data[r][c] = editor.innerText; 
