@@ -25,26 +25,37 @@
         .tab.active { background: #fff; border-bottom: 2px solid var(--primary); font-weight: bold; }
         #editor-container { padding: 20px; overflow: auto; height: calc(100vh - 155px); background: #eee; }
         table { border-collapse: collapse; background: white; table-layout: fixed; transform-origin: 0 0; }
-        td, th { border: 1px solid #d0d7de; padding: 0; font-size: 14px; outline: none; box-sizing: border-box; overflow: hidden; position: relative; vertical-align: top; }
+        th { border: 1px solid #d0d7de; padding: 0; font-size: 14px; outline: none; box-sizing: border-box; overflow: hidden; position: relative; vertical-align: top; }
+        td { 
+            position: relative; 
+            border: 1px solid #d0d7de; 
+            padding: 0; 
+        }
+
         /* 內部容器用於控制高度裁切 */
         .cell-editor { width: 100%; height: 100%; padding: 4px; box-sizing: border-box; overflow: hidden; outline: none; }
         .cell-editor.wrap-text { white-space: pre-wrap; word-break: break-all; }
         .cell-editor.line-text { white-space: pre; text-overflow: ellipsis; }
         /* 當編輯器取得焦點時，解除高度限制並浮動在最上層 */
         .cell-editor:focus {
-            position: absolute;    /* 絕對定位，使其可以超出表格格線 */
-            z-index: 1000;         /* 確保在所有儲存格之上 */
+            position: absolute;    /* 脫離文件流，浮在上方 */
+            top: 0;
+            left: 0;
+            z-index: 1000;         /* 確保蓋在所有東西上面 */
+            width: 300px;          /* 點開後擴張寬度，避免太窄 */
+            min-width: 100%;       /* 至少跟原本格子一樣寬 */
             height: auto !important;
-            max-height: 80vh !important; /* 最高佔螢幕 80%，留一點邊緣 */
-            min-height: 100%;      /* 至少跟原本的格子一樣大 */
-            width: auto;           /* 寬度可隨內容撐開 */
-            min-width: 100%;
-            background: white;     /* 避免背景透明看到下面的文字 */
-            box-shadow: 0 4px 12px rgba(0,0,0,0.2); /* 加上陰影更像彈出式視窗 */
-            border: 1px solid var(--primary);
-            padding: 8px;
-            overflow-y: auto;      /* 如果真的超級長，允許內部滾動 */
+            max-height: 80vh !important; /* 佔滿螢幕高度的 80% */
+            background: white;     /* 必備背景色，否則會透視 */
+            padding: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3); /* 深色陰影增加立體感 */
+            border: 2px solid var(--primary);
+            outline: none;
+            overflow-y: auto;      /* 內容若超過 80vh 可滾動 */
+            white-space: pre-wrap; /* 自動換行 */
+            word-break: break-all;
         }
+
         th { background: #f6f8fa; font-size: 11px; color: #57606a; text-align: center; padding: 4px; }
         td.selected { background: var(--select-bg) !important; outline: 1px solid var(--select-border); z-index: 2; }
         #import-modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; border-radius: 8px; padding: 20px; z-index: 2000; box-shadow: 0 5px 30px rgba(0,0,0,0.3); display: none; width: 400px; }
