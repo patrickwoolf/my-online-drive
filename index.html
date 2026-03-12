@@ -24,7 +24,14 @@
         .tab { padding: 8px 15px; border-right: 1px solid #d0d7de; cursor: pointer; font-size: 11px; background: #eaeef2; }
         .tab.active { background: #fff; border-bottom: 2px solid var(--primary); font-weight: bold; }
         #editor-container { padding: 20px; overflow: auto; height: calc(100vh - 155px); background: #eee; }
-        table { border-collapse: collapse; background: white; table-layout: fixed; transform-origin: 0 0; }
+        table {
+            border-collapse: collapse;
+            background: white;
+            table-layout: fixed;
+            /* 加入以下兩行 */
+            transform: scale(0.9); 
+            transform-origin: top left; 
+        }
         th { border: 1px solid #d0d7de; padding: 0; font-size: 14px; outline: none; box-sizing: border-box; overflow: hidden; position: relative; vertical-align: top; }
         td { 
             position: relative; 
