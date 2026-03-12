@@ -45,21 +45,25 @@
         .cell-editor.line-text { white-space: pre; text-overflow: ellipsis; }
         /* 當編輯器取得焦點時，解除高度限制並浮動在最上層 */
         .cell-editor:focus {
-            position: absolute;    /* 脫離文件流，浮在上方 */
-            top: 0;
+            position: absolute;    
+            /* 定位在儲存格高度的 50% 位置 */
+            top: 50%;
             left: 0;
-            z-index: 1000;         /* 確保蓋在所有東西上面 */
-            width: 300px;          /* 點開後擴張寬度，避免太窄 */
-            min-width: 100%;       /* 至少跟原本格子一樣寬 */
+            /* 核心邏輯：向上位移自身高度的一半，達成中心對齊 */
+            transform: translateY(-50%); 
+            
+            z-index: 1000;         
+            width: 300px;          
+            min-width: 100%;       
             height: auto !important;
-            max-height: 80vh !important; /* 佔滿螢幕高度的 80% */
-            background: white;     /* 必備背景色，否則會透視 */
+            max-height: 80vh !important; 
+            background: white;     
             padding: 10px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.3); /* 深色陰影增加立體感 */
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3); 
             border: 2px solid var(--primary);
             outline: none;
-            overflow-y: auto;      /* 內容若超過 80vh 可滾動 */
-            white-space: pre-wrap; /* 自動換行 */
+            overflow-y: auto;      
+            white-space: pre-wrap; 
             word-break: break-all;
         }
 
