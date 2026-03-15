@@ -306,13 +306,51 @@
         }
 
         async function uploadAnyFile(e) {
-            const file = e.target.files[0]; if (!file) return;
+            const file = e.target.files[0]; 
+            if (!file) return;
+            
+            updateStatus('syncing', 'Uploading...');
             const reader = new FileReader();
+            
             reader.onload = async () => {
                 const base64 = reader.result.split(',')[1];
                 const path = currentPath ? `${currentPath}/${file.name}` : file.name;
-                await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify({ message: 'upload', content: base64 }) });
-                syncFiles();
+                
+                try {
+                    // 1. 先嘗試獲取該路徑下是否已有檔案（為了拿到 sha）
+                    let sha = '';
+                    const checkRes = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { 
+                        headers: getHeaders() 
+                    });
+                    
+                    if (checkRes.ok) {
+                        const existingFile = await checkRes.json();
+                        sha = existingFile.sha;
+                    }
+        
+                    // 2. 執行上傳 (如果有 sha 就是更新，沒有就是新建)
+                    const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, {
+                        method: 'PUT',
+                        headers: getHeaders(),
+                        body: JSON.stringify({ 
+                            message: `Upload file: ${file.name}`, 
+                            content: base64,
+                            sha: sha // 如果檔案存在，這行是必要的
+                        })
+                    });
+        
+                    if (res.ok) {
+                        updateStatus('saved', 'Upload Success');
+                        syncFiles(); // 重新整理列表
+                    } else {
+                        const err = await res.json();
+                        alert("Upload failed: " + err.message);
+                        updateStatus('unsaved', 'Error');
+                    }
+                } catch (err) {
+                    console.error(err);
+                    updateStatus('unsaved', 'Upload Error');
+                }
             };
             reader.readAsDataURL(file);
         }
