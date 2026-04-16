@@ -6,6 +6,7 @@
     <title>CloudDrive Editor Pro</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
     <style>
         #scroll-container { height: calc(100vh - 120px); overflow-y: auto; -webkit-overflow-scrolling: touch; background: #f8fafc; }
         #editor { min-height: 100%; padding: 2rem; outline: none; background: white; margin: 0; transition: transform 0.2s ease-in-out; transform-origin: top left; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); width: 100%; box-sizing: border-box; }
@@ -134,7 +135,25 @@
         async function uploadImageAndInsert(file) {
             if (!currentFilePath) { alert("請先開啟一個檔案！"); return; }
             if (!document.getElementById('ghToken').value) { alert("請輸入 GitHub Token！"); return; }
-        
+
+            // 檢查是否為 HEIC 檔案
+            if (file.name.toLowerCase().endsWith(".heic") || file.type === "image/heic") {
+                updateStatus('syncing', '正在轉換 HEIC 格式...');
+                try {
+                    const blob = await heic2any({
+                        blob: file,
+                        toType: "image/jpeg",
+                        quality: 0.8
+                    });
+                    // 將轉換後的 Blob 包裝成 File 物件
+                    fileToUpload = new File([blob], file.name.replace(/\.heic$/i, ".jpg"), { type: "image/jpeg" });
+                } catch (err) {
+                    console.error("HEIC 轉換失敗:", err);
+                    alert("HEIC 轉換失敗，請嘗試直接上傳 JPG。");
+                    return;
+                }
+            }
+            
             // 1. 建立暫時 ID 與本地預覽 URL
             const tempId = 'img-' + Date.now();
             const localUrl = URL.createObjectURL(file);
