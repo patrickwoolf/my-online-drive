@@ -131,78 +131,155 @@
             }
         });
 
-        // 圖片上傳邏輯：上傳後插入 URL 連結而非 Base64
         async function uploadImageAndInsert(file) {
             if (!currentFilePath) { alert("請先開啟一個檔案！"); return; }
             if (!document.getElementById('ghToken').value) { alert("請輸入 GitHub Token！"); return; }
-
+        
+            updateStatus('syncing', '準備中...');
+        
             let fileToUpload = file;
-            
-            // 檢查是否為 HEIC 檔案
+        
+            // 1. HEIC 轉檔邏輯
             if (file.name.toLowerCase().endsWith(".heic") || file.type === "image/heic") {
-                updateStatus('syncing', '正在轉換 HEIC 格式...');
+                updateStatus('syncing', '正在轉換 HEIC (請稍候)...');
                 try {
                     const blob = await heic2any({
                         blob: file,
                         toType: "image/jpeg",
-                        quality: 0.8
+                        quality: 0.7
                     });
-                    // 將轉換後的 Blob 包裝成 File 物件
+                    // 轉檔後建立新的 File 物件
                     fileToUpload = new File([blob], file.name.replace(/\.heic$/i, ".jpg"), { type: "image/jpeg" });
                 } catch (err) {
                     console.error("HEIC 轉換失敗:", err);
-                    alert("HEIC 轉換失敗，請嘗試直接上傳 JPG。");
+                    updateStatus('unsaved', '轉檔失敗');
                     return;
                 }
             }
-            
-            // 1. 建立暫時 ID 與本地預覽 URL
-            const tempId = 'img-' + Date.now();
-            const localUrl = URL.createObjectURL(file);
-            
-            // 2. 立即插入圖片，顯示上傳中狀態
-            document.execCommand('insertHTML', false, `<img src="${localUrl}" id="${tempId}" class="uploading" style="max-width:100%;">`);
-            updateStatus('syncing', '正在上傳圖片...');
         
+            // 2. 建立預覽與 ID
+            const tempId = 'img-' + Date.now();
+            const localUrl = URL.createObjectURL(fileToUpload);
+            document.execCommand('insertHTML', false, `<img src="${localUrl}" id="${tempId}" class="uploading" style="max-width:100%;">`);
+        
+            // 3. 轉 Base64 並上傳
             const reader = new FileReader();
-            reader.readAsDataURL(file);
             reader.onload = async () => {
                 const base64 = reader.result.split(',')[1];
-                
-                // 3. 取得資料夾名稱：assets/檔案名稱(不含副檔名)/
                 const baseName = currentFilePath.split('/').pop();
                 const folderName = baseName.substring(0, baseName.lastIndexOf('.')) || baseName;
                 const uploadPath = `assets/${folderName}/${Date.now()}.jpg`;
+        
+                updateStatus('syncing', '正在上傳至雲端...');
         
                 try {
                     const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${uploadPath}`, {
                         method: 'PUT',
                         headers: getHeaders(),
-                        body: JSON.stringify({ message: `img for ${folderName}`, content: base64 })
+                        body: JSON.stringify({ 
+                            message: `Upload img for ${folderName}`, 
+                            content: base64 
+                        })
                     });
         
                     if (res.ok) {
                         const d = await res.json();
                         const img = document.getElementById(tempId);
                         if (img) {
-                            // 4. 上傳成功，替換為正式 URL 並移除上傳樣式
                             img.src = d.content.download_url;
                             img.classList.remove('uploading');
-                            img.removeAttribute('id'); // 移除 ID 避免存檔冗餘
-                            
-                            URL.revokeObjectURL(localUrl); // 釋放記憶體
-                            updateStatus('saved', '圖片上傳成功');
+                            img.removeAttribute('id');
+                            URL.revokeObjectURL(localUrl);
+                            updateStatus('saved', '圖片已存至 assets');
                             
                             isDirty = true;
-                            saveFile(); // 強制觸發存檔
+                            saveFile(); // 觸發 HTML 主檔案存檔
                         }
+                    } else {
+                        const errorData = await res.json();
+                        alert("上傳失敗：" + errorData.message);
+                        updateStatus('unsaved', 'GitHub 上傳失敗');
                     }
                 } catch (e) {
-                    updateStatus('unsaved', '上傳失敗');
-                    console.error("圖片上傳出錯:", e);
+                    updateStatus('unsaved', '網路連線錯誤');
+                    console.error(e);
                 }
             };
+            reader.readAsDataURL(fileToUpload);
         }
+        
+        // 圖片上傳邏輯：上傳後插入 URL 連結而非 Base64
+        // async function uploadImageAndInsert(file) {
+        //     if (!currentFilePath) { alert("請先開啟一個檔案！"); return; }
+        //     if (!document.getElementById('ghToken').value) { alert("請輸入 GitHub Token！"); return; }
+
+        //     let fileToUpload = file;
+            
+        //     // 檢查是否為 HEIC 檔案
+        //     if (file.name.toLowerCase().endsWith(".heic") || file.type === "image/heic") {
+        //         updateStatus('syncing', '正在轉換 HEIC 格式...');
+        //         try {
+        //             const blob = await heic2any({
+        //                 blob: file,
+        //                 toType: "image/jpeg",
+        //                 quality: 0.8
+        //             });
+        //             // 將轉換後的 Blob 包裝成 File 物件
+        //             fileToUpload = new File([blob], file.name.replace(/\.heic$/i, ".jpg"), { type: "image/jpeg" });
+        //         } catch (err) {
+        //             console.error("HEIC 轉換失敗:", err);
+        //             alert("HEIC 轉換失敗，請嘗試直接上傳 JPG。");
+        //             return;
+        //         }
+        //     }
+            
+        //     // 1. 建立暫時 ID 與本地預覽 URL
+        //     const tempId = 'img-' + Date.now();
+        //     const localUrl = URL.createObjectURL(file);
+            
+        //     // 2. 立即插入圖片，顯示上傳中狀態
+        //     document.execCommand('insertHTML', false, `<img src="${localUrl}" id="${tempId}" class="uploading" style="max-width:100%;">`);
+        //     updateStatus('syncing', '正在上傳圖片...');
+        
+        //     const reader = new FileReader();
+        //     reader.readAsDataURL(file);
+        //     reader.onload = async () => {
+        //         const base64 = reader.result.split(',')[1];
+                
+        //         // 3. 取得資料夾名稱：assets/檔案名稱(不含副檔名)/
+        //         const baseName = currentFilePath.split('/').pop();
+        //         const folderName = baseName.substring(0, baseName.lastIndexOf('.')) || baseName;
+        //         const uploadPath = `assets/${folderName}/${Date.now()}.jpg`;
+        
+        //         try {
+        //             const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${uploadPath}`, {
+        //                 method: 'PUT',
+        //                 headers: getHeaders(),
+        //                 body: JSON.stringify({ message: `img for ${folderName}`, content: base64 })
+        //             });
+        
+        //             if (res.ok) {
+        //                 const d = await res.json();
+        //                 const img = document.getElementById(tempId);
+        //                 if (img) {
+        //                     // 4. 上傳成功，替換為正式 URL 並移除上傳樣式
+        //                     img.src = d.content.download_url;
+        //                     img.classList.remove('uploading');
+        //                     img.removeAttribute('id'); // 移除 ID 避免存檔冗餘
+                            
+        //                     URL.revokeObjectURL(localUrl); // 釋放記憶體
+        //                     updateStatus('saved', '圖片上傳成功');
+                            
+        //                     isDirty = true;
+        //                     saveFile(); // 強制觸發存檔
+        //                 }
+        //             }
+        //         } catch (e) {
+        //             updateStatus('unsaved', '上傳失敗');
+        //             console.error("圖片上傳出錯:", e);
+        //         }
+        //     };
+        // }
 
         async function syncFiles() {
             if (!document.getElementById('ghToken').value) return;
