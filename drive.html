@@ -136,6 +136,8 @@
             if (!currentFilePath) { alert("請先開啟一個檔案！"); return; }
             if (!document.getElementById('ghToken').value) { alert("請輸入 GitHub Token！"); return; }
 
+            let fileToUpload = file;
+            
             // 檢查是否為 HEIC 檔案
             if (file.name.toLowerCase().endsWith(".heic") || file.type === "image/heic") {
                 updateStatus('syncing', '正在轉換 HEIC 格式...');
