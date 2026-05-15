@@ -144,9 +144,11 @@
             columns.forEach((col, idx) => {
                 const th = document.createElement('th');
                 th.style.width = col.width + 'px';
+                th.style.minWidth = col.width + 'px'; // 確保縮小寬度生效
                 th.className = "p-2 border-b border-r text-xs relative bg-slate-50 font-bold";
                 th.innerHTML = `
-                    <div class="truncate">${col.title}</div>
+                    <span contenteditable="true" class="outline-none focus:bg-yellow-50 px-1" 
+                          onblur="updateColTitle(${idx}, this.innerText)">${col.title}</span>
                     <div class="col-tools">
                         <button onclick="resizeCol(${idx}, 40)"><i data-lucide="maximize-2" size="12"></i></button>
                         <button onclick="resizeCol(${idx}, -40)"><i data-lucide="minimize-2" size="12"></i></button>
@@ -228,11 +230,19 @@
 
         function resizeCol(idx, delta) {
             record();
+            // 取得對應的 th 元素 (index + 1 是因為第一欄是拖拉手把)
             const th = document.querySelectorAll('#headerRow th')[idx + 1];
-            th.style.width = Math.max(50, th.offsetWidth + delta) + 'px';
+            // 直接操作 style.width 並確保不小於最小寬度
+            let currentW = th.offsetWidth;
+            let newW = currentW + delta;
+            
+            if (newW < 50) newW = 50; 
+            
+            th.style.width = newW + 'px';
+            th.style.minWidth = newW + 'px'; // 加上 minWidth 確保縮小生效
             markDirty(false);
         }
-
+        
         function resizeRow(btn, delta) {
             record();
             const tr = btn.closest('tr');
