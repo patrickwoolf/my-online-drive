@@ -2,77 +2,90 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MedTrack Pro - Final Fix</title>
+    <title>MedTrack Pro - 雲端排床系統</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
     <style>
         .drag-handler { cursor: grab; color: #cbd5e1; }
-        .date-red { background-color: #fee2e2 !important; color: #991b1b !important; border: 1px solid #f87171 !important; }
-        .date-green { background-color: #dcfce7 !important; color: #166534 !important; border: 1px solid #4ade80 !important; }
+        .date-red { background-color: #fee2e2 !important; color: #991b1b !important; }
+        .date-green { background-color: #dcfce7 !important; color: #166534 !important; }
         .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
         .status-saved { background: #22c55e; }
         .status-unsaved { background: #ef4444; }
-        .status-syncing { background: #3b82f6; animation: pulse 1s infinite; }
-        #sidebar { transition: transform 0.3s ease; z-index: 50; }
-        .sidebar-hidden { transform: translateX(-100%); }
-        .col-tools { position: absolute; top: -5px; left: 50%; transform: translateX(-50%); display: none; gap: 4px; background: white; padding: 2px 8px; border-radius: 20px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); border: 1px solid #e2e8f0; z-index: 30; }
+        
+        #mainTable { table-layout: fixed; width: max-content; min-width: 100%; border-spacing: 0; }
+        td { position: relative; padding: 0 !important; border-right: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; }
+        
+        /* 寬高即時連動關鍵 */
+        .fill-content { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: stretch; overflow: hidden; }
+        .fill-box { width: 100%; height: 100%; border: none; outline: none; padding: 8px; background: transparent; resize: none; font-size: 13px; }
+        
+        .opt-btn { flex: 1; border-right: 1px solid #f1f5f9; background: white; font-size: 11px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s; }
+        .opt-btn:last-child { border-right: none; }
+        .btn-active { background: #3b82f6 !important; color: white; }
+        
+        .col-tools { position: absolute; top: -15px; left: 50%; transform: translateX(-50%); display: none; gap: 4px; background: white; padding: 4px; border-radius: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); z-index: 50; }
         th:hover .col-tools { display: flex; }
-        .row-action-btn { opacity: 0; transition: opacity 0.2s; }
-        tr:hover .row-action-btn { opacity: 1; }
-        th { position: relative; min-width: 120px; white-space: nowrap; }
+        .row-tool { opacity: 0; transition: opacity 0.2s; }
+        tr:hover .row-tool { opacity: 1; }
+        .sidebar-hidden { transform: translateX(-100%); }
+        #sidebar { transition: transform 0.3s ease; z-index: 100; }
     </style>
 </head>
 <body class="bg-slate-50 h-screen flex flex-col overflow-hidden text-slate-700">
 
-    <!-- 側邊欄 -->
-    <aside id="sidebar" class="fixed left-0 top-0 h-full w-64 bg-white shadow-2xl border-r p-4 sidebar-hidden text-sm">
-        <div class="flex justify-between items-center mb-6 border-b pb-2">
-            <h2 class="font-bold flex items-center gap-2 text-slate-600"><i data-lucide="folder-open" size="18"></i> 檔案管理</h2>
-            <button onclick="toggleSidebar()" class="text-slate-400 hover:text-red-500"><i data-lucide="x"></i></button>
+    <div id="tokenModal" class="fixed inset-0 bg-black/40 hidden z-[200] flex items-center justify-center">
+        <div class="bg-white p-6 rounded-xl shadow-2xl w-80 text-center">
+            <i data-lucide="key" class="mx-auto mb-2 text-blue-500"></i>
+            <h3 class="font-bold mb-4">GitHub Sync 設定</h3>
+            <input type="password" id="ghToken" placeholder="Personal Access Token" class="w-full p-2 border rounded mb-4 text-sm">
+            <div class="flex justify-center gap-2">
+                <button onclick="document.getElementById('tokenModal').classList.add('hidden')" class="px-4 py-2 text-slate-400">關閉</button>
+                <button onclick="saveToken()" class="px-4 py-2 bg-blue-600 text-white rounded">儲存並刷新</button>
+            </div>
         </div>
-        <!-- 修正：新增清單按鈕 -->
-        <button onclick="createNewFile()" class="w-full mb-4 py-3 border-2 border-dashed border-blue-200 text-blue-500 rounded-xl hover:bg-blue-50 hover:border-blue-400 flex items-center justify-center gap-2 font-bold transition-all">
-            <i data-lucide="plus-circle" size="18"></i> 建立新清單
+    </div>
+
+    <aside id="sidebar" class="fixed left-0 top-0 h-full w-64 bg-white border-r p-4 sidebar-hidden shadow-2xl">
+        <div class="flex justify-between items-center mb-6">
+            <h2 class="font-bold flex items-center gap-2"><i data-lucide="cloud"></i> 雲端檔案</h2>
+            <button onclick="toggleSidebar()"><i data-lucide="x"></i></button>
+        </div>
+        <button onclick="createNewCloudFile()" class="w-full py-2 mb-4 border-2 border-dashed border-blue-200 text-blue-600 rounded-lg hover:bg-blue-50 text-sm font-bold flex items-center justify-center gap-2">
+            <i data-lucide="plus-circle" size="16"></i> 新增檔案
         </button>
-        <div id="fileList" class="space-y-1 overflow-y-auto h-[calc(100%-140px)] px-1"></div>
+        <div id="fileList" class="space-y-1"></div>
     </aside>
 
-    <header class="bg-white border-b p-2 shadow-sm shrink-0">
-        <div class="flex justify-between items-center px-4">
-            <div class="flex items-center gap-4">
-                <button onclick="toggleSidebar()" class="p-2 hover:bg-slate-100 rounded-lg text-slate-500 transition-colors"><i data-lucide="layout-grid"></i></button>
-                <h1 class="text-lg font-bold text-blue-600 flex items-center gap-2">
-                    <i data-lucide="stethoscopes" class="text-blue-500"></i> MedTrack 
-                    <span id="currentFileNameDisplay" class="bg-blue-50 text-blue-400 px-2 py-0.5 rounded text-xs font-mono ml-2 border border-blue-100"></span>
-                </h1>
-                <button onclick="addNewPatient()" class="bg-blue-600 text-white px-5 py-2 rounded-lg hover:bg-blue-700 shadow-md hover:shadow-blue-200 flex items-center gap-2 text-sm ml-4 transition-all">
-                    <i data-lucide="user-plus" size="16"></i> 新增病人
-                </button>
+    <header class="bg-white border-b p-3 flex justify-between items-center shadow-sm">
+        <div class="flex items-center gap-4">
+            <button onclick="toggleSidebar()" class="p-2 hover:bg-slate-100 rounded-lg"><i data-lucide="folder-kanban"></i></button>
+            <h1 class="text-lg font-bold text-blue-600 flex items-center gap-2">
+                <i data-lucide="layout"></i> MedTrack <span id="fileNameDisplay" class="text-xs text-slate-400 font-normal">排床.json</span>
+            </h1>
+            <div class="flex gap-1 border-l pl-3">
+                <button onclick="undo()" class="p-1.5 hover:bg-slate-100 rounded" title="Undo"><i data-lucide="undo-2" size="18"></i></button>
+                <button onclick="redo()" class="p-1.5 hover:bg-slate-100 rounded" title="Redo"><i data-lucide="redo-2" size="18"></i></button>
             </div>
-
-            <div class="flex items-center gap-3">
-                <div class="relative group">
-                    <i data-lucide="key" size="14" class="absolute left-2 top-2 text-slate-300"></i>
-                    <input type="password" id="ghToken" placeholder="GitHub Token" class="border rounded-lg pl-7 pr-2 py-1.5 text-xs w-44 outline-none focus:ring-2 ring-blue-100">
-                </div>
-                <div class="flex text-[10px] font-black text-slate-400 items-center px-2 py-1 bg-slate-50 rounded border border-slate-100">
-                    <span class="status-dot status-saved mr-1.5"></span> 
-                    <span id="statusText">READY</span>
-                </div>
-                <button onclick="saveToGithub()" class="bg-slate-800 text-white p-2 rounded-lg hover:bg-black transition-all shadow-sm"><i data-lucide="save" size="18"></i></button>
+        </div>
+        <div class="flex items-center gap-3">
+            <button onclick="addNewRow()" class="bg-blue-600 text-white px-4 py-1.5 rounded-lg hover:bg-blue-700 flex items-center gap-2 text-sm">
+                <i data-lucide="user-plus" size="16"></i> 新增病人
+            </button>
+            <div class="text-[10px] bg-slate-100 px-2 py-1 rounded border">
+                <span class="status-dot status-saved mr-1"></span> <span id="status">READY</span>
             </div>
+            <button onclick="document.getElementById('tokenModal').classList.remove('hidden')" class="p-2 text-slate-400 hover:text-blue-600"><i data-lucide="settings" size="20"></i></button>
+            <button onclick="saveToGithub()" class="bg-slate-800 text-white p-2 rounded-lg" title="手動存檔"><i data-lucide="save" size="20"></i></button>
         </div>
     </header>
 
     <main class="flex-1 overflow-auto p-4">
-        <div class="bg-white rounded-xl shadow-xl border border-slate-200 inline-block min-w-full">
-            <table class="text-sm text-left border-collapse w-full" id="mainTable">
-                <thead class="bg-slate-50/50">
-                    <tr id="headerRow">
-                        <!-- 核心邏輯：此處將由 JS 根據數據結構生成 -->
-                    </tr>
+        <div class="bg-white rounded-xl shadow-lg border border-slate-200 inline-block min-w-full overflow-hidden">
+            <table id="mainTable">
+                <thead class="bg-slate-50 sticky top-0 z-10">
+                    <tr id="headerRow"></tr>
                 </thead>
                 <tbody id="patientList"></tbody>
             </table>
@@ -81,228 +94,248 @@
 
     <script>
         const REPO = 'patrickwoolf/my-online-drive';
-        let currentFilePath = new URLSearchParams(window.location.search).get('file') || '排床.json';
-        let isDirty = false;
+        let currentFile = '排床.json';
+        let undoStack = [], redoStack = [], isDirty = false;
 
-        const coreColumns = [
-            { title: "病人/聯絡", type: "textarea" }, { title: "診斷/功能", type: "textarea" },
-            { title: "起始日期", type: "date-start" }, { title: "目前位置", type: "text" },
-            { title: "住院期限", type: "date-expiry" }, { title: "排床(1)", type: "checkbox" },
-            { title: "排床(2)", type: "checkbox" }, { title: "氣切抽痰", type: "score-select", options: { "5": "-", "3": "<3", "0": ">3" } },
-            { title: "尿管", type: "select", options: ["-", "+"] }, { title: "鼻胃管", type: "select", options: ["-", "+"] },
-            { title: "感染", type: "score-select", options: { "5": "-", "0": "+" } }, { title: "譫妄", type: "score-select", options: { "3": "-", "0": "+" } },
-            { title: "用藥>10", type: "score-select", options: { "5": "-", "0": "+" } }, { title: "家屬PSY", type: "score-select", options: { "10": "-", "0": "PSY!" } },
-            { title: "預後", type: "score-select", options: Object.fromEntries([...Array(11).keys()].map(i => [i, i])) }, { title: "總分", type: "total" }
+        const columns = [
+            { title: "病人 / 聯絡資訊", type: "textarea", width: 140 },
+            { title: "診斷 / 功能", type: "textarea", width: 140 },
+            { title: "起始日期", type: "date-start", width: 125 },
+            { title: "現在在哪", type: "text", width: 100 },
+            { title: "住院期限", type: "date-expiry", width: 125 },
+            { title: "第一順位", type: "multi", opts: ["1","2","3"], width: 85 },
+            { title: "第二順位", type: "multi", opts: ["1","2","3"], width: 85 },
+            { title: "氣切 抽痰", type: "score", opts: ["-","<3",">3"], width: 95 },
+            { title: "尿管", type: "score", opts: ["-","+"], width: 60 },
+            { title: "鼻胃管", type: "score", opts: ["-","+"], width: 60 },
+            { title: "感染", type: "score", opts: ["no","yes"], width: 60 },
+            { title: "譫妄", type: "score", opts: ["no","yes"], width: 60 },
+            { title: "用藥>10?", type: "score", opts: ["no","yes"], width: 65 },
+            { title: "照顧者", type: "text", width: 100 },
+            { title: "家屬PSY?", type: "score", opts: ["no","yes"], width: 75 },
+            { title: "預後", type: "score", opts: ["0","1","2","3","4","5","6","7","8","9","10"], width: 150 },
+            { title: "總分", type: "total", width: 60 }
         ];
 
-        document.addEventListener('DOMContentLoaded', async () => {
-            lucide.createIcons();
-            const savedToken = localStorage.getItem('gh_token_med');
-            if (savedToken) {
-                document.getElementById('ghToken').value = savedToken;
-                await fetchFileList();
-                await loadFromGithub(currentFilePath);
-            } else {
-                rebuildTable({ headers: coreColumns, rows: [[]] }); // 初始顯示
-            }
-            new Sortable(document.getElementById('patientList'), { animation: 150, handle: '.drag-handler', onEnd: markDirty });
-        });
+        const weight = {
+            "氣切 抽痰": {"-":5, "<3":3, ">3":0},
+            "感染": {"no":5, "yes":0},
+            "譫妄": {"no":3, "yes":0},
+            "用藥>10?": {"no":5, "yes":0},
+            "家屬PSY?": {"no":10, "yes":0},
+            "預後": {"0":0,"1":1,"2":2,"3":3,"4":4,"5":5,"6":6,"7":7,"8":8,"9":9,"10":10}
+        };
 
-        // --- 修復：渲染標頭 ---
-        function renderHeader(columns) {
+        window.onload = () => {
+            renderHeader();
+            const token = localStorage.getItem('gh_token_med');
+            if (token) {
+                loadFromGithub();
+                fetchCloudFiles();
+            } else {
+                addNewRow();
+            }
+            new Sortable(patientList, { handle: '.drag-handler', onEnd: markDirty });
+        };
+
+        function renderHeader() {
             const hr = document.getElementById('headerRow');
-            hr.innerHTML = '<th class="w-10 p-3 border-b"></th>'; 
+            hr.innerHTML = '<th class="w-10 border-b"></th>';
             columns.forEach((col, idx) => {
                 const th = document.createElement('th');
-                th.className = "p-3 border-b border-r font-bold text-slate-500 bg-slate-50";
+                th.style.width = col.width + 'px';
+                th.className = "p-2 border-b border-r text-xs relative bg-slate-50 font-bold";
                 th.innerHTML = `
-                    <div class="flex items-center justify-between group">
-                        <span contenteditable="true" class="outline-none focus:text-blue-600" onblur="markDirty()">${col.title}</span>
-                        <div class="col-tools">
-                            <button onclick="insertCol(${idx}, 'left')" class="text-blue-500 hover:bg-blue-50 p-1 rounded-full border border-blue-100 bg-white"><i data-lucide="plus" size="10"></i></button>
-                            <button onclick="deleteCol(${idx})" class="text-red-400 hover:bg-red-50 p-1 rounded-full border border-red-100 bg-white"><i data-lucide="trash-2" size="10"></i></button>
-                            <button onclick="insertCol(${idx}, 'right')" class="text-blue-500 hover:bg-blue-50 p-1 rounded-full border border-blue-100 bg-white"><i data-lucide="plus" size="10"></i></button>
-                        </div>
+                    <div class="truncate">${col.title}</div>
+                    <div class="col-tools">
+                        <button onclick="resizeCol(${idx}, 40)"><i data-lucide="maximize-2" size="12"></i></button>
+                        <button onclick="resizeCol(${idx}, -40)"><i data-lucide="minimize-2" size="12"></i></button>
+                        <button onclick="insertCol(${idx})"><i data-lucide="plus-square" size="12"></i></button>
+                        <button onclick="deleteCol(${idx})"><i data-lucide="trash-2" size="12"></i></button>
                     </div>
                 `;
                 hr.appendChild(th);
             });
-            hr.innerHTML += '<th class="w-10 p-3 border-b"></th>';
+            hr.innerHTML += '<th class="w-12 border-b"></th>';
             lucide.createIcons();
         }
 
-        // --- 修復：新增清單流程 ---
-        async function createNewFile() {
-            const name = prompt("請輸入新檔案名稱 (例如: 2024-June):");
-            if (!name) return;
-            const fileName = name.endsWith('.json') ? name : name + '.json';
-            currentFilePath = fileName;
-            
-            // 初始化一個空結構
-            const emptyData = { headers: coreColumns, rows: [new Array(coreColumns.length).fill("")] };
-            rebuildTable(emptyData);
-            
-            await saveToGithub(); // 儲存到雲端
-            await fetchFileList(); // 重新整理側邊清單
-            alert(`已建立檔案: ${fileName}`);
-        }
-
-        // --- 核心工具：重新構建表格 ---
-        function rebuildTable(data) {
-            renderHeader(data.headers);
-            const tbody = document.getElementById('patientList');
-            tbody.innerHTML = '';
-            if (data.rows.length === 0) data.rows = [new Array(data.headers.length).fill("")];
-            data.rows.forEach(rowData => addNewPatient(rowData, data.headers));
-            document.getElementById('currentFileNameDisplay').innerText = currentFilePath;
-        }
-
-        function addNewPatient(rowData = [], headers = coreColumns) {
-            const tbody = document.getElementById('patientList');
+        function addNewRow(data = {}, height = 80) {
             const tr = document.createElement('tr');
-            tr.className = "border-b hover:bg-slate-50 transition-colors";
+            tr.style.height = height + 'px';
+            let html = `<td class="drag-handler text-center border-r"><i data-lucide="grip-vertical" size="14"></i></td>`;
             
-            let html = `<td class="p-3 drag-handler text-slate-300"><i data-lucide="grip-vertical" size="14"></i></td>`;
-            headers.forEach((col, i) => {
-                const val = rowData[i] || "";
-                html += `<td class="p-1 border-r">`;
-                if (col.type === "textarea") html += `<textarea class="w-full border-none bg-transparent p-1 resize-none h-10 outline-none" oninput="markDirty()">${val}</textarea>`;
-                else if (col.type === "date-start") html += `<input type="date" class="start-date w-full border-none bg-transparent outline-none" value="${val}" onchange="checkDate(this)">`;
-                else if (col.type === "date-expiry") html += `<input type="date" class="expiry-date w-full border-none bg-transparent outline-none" value="${val}" onchange="checkDate(this)">`;
-                else if (col.type === "checkbox") {
-                    html += `<div class="flex gap-1 justify-center">${[1,2,3].map(v => `<label class="text-[10px] cursor-pointer hover:text-blue-600"><input type="checkbox" value="${v}" ${val?.includes?.(String(v))?'checked':''} onchange="markDirty()"> ${v}</label>`).join('')}</div>`;
-                } else if (col.type === "score-select") {
-                    html += `<select class="calc-val bg-transparent border-none w-full cursor-pointer" onchange="calculateScore(this)">${Object.entries(col.options).map(([k,v]) => `<option value="${k}" ${val==k?'selected':''}>${v}</option>`).join('')}</select>`;
-                } else if (col.type === "select") {
-                    html += `<select class="bg-transparent border-none w-full cursor-pointer" onchange="markDirty()">${col.options.map(v => `<option value="${v}" ${val==v?'selected':''}>${v}</option>`).join('')}</select>`;
+            columns.forEach(col => {
+                html += `<td><div class="fill-content">`;
+                if (col.type === "textarea") {
+                    html += `<textarea class="fill-box" oninput="markDirty()">${data[col.title] || ''}</textarea>`;
+                } else if (col.type === "text") {
+                    html += `<input type="text" class="fill-box" value="${data[col.title] || ''}" oninput="markDirty()">`;
+                } else if (col.type.startsWith("date")) {
+                    html += `<input type="date" class="fill-box ${col.type}" value="${data[col.title] || ''}" oninput="checkDate(this)">`;
+                } else if (col.type === "multi" || col.type === "score") {
+                    col.opts.forEach(o => {
+                        const active = (data[col.title] || "").split(',').includes(o) ? 'btn-active' : '';
+                        html += `<button class="opt-btn ${active}" data-col="${col.title}" onclick="toggleBtn(this, '${col.type}')">${o}</button>`;
+                    });
                 } else if (col.type === "total") {
-                    html += `<span class="score-cell font-black text-blue-600 block text-center">0</span>`;
-                } else {
-                    html += `<input type="text" class="w-full border-none bg-transparent p-1 outline-none" value="${val}" oninput="markDirty()">`;
+                    html += `<div class="total-cell w-full flex items-center justify-center font-black text-blue-600">0</div>`;
                 }
-                html += `</td>`;
+                html += `</div></td>`;
             });
-            html += `<td class="p-3"><button onclick="this.closest('tr').remove(); markDirty();" class="row-action-btn text-red-200 hover:text-red-500 transition-colors"><i data-lucide="user-minus" size="16"></i></button></td>`;
+
+            html += `<td class="text-center"><div class="row-tool flex flex-col items-center">
+                <button onclick="resizeRow(this, 30)" class="text-slate-300 hover:text-blue-500"><i data-lucide="chevron-up" size="14"></i></button>
+                <button onclick="this.closest('tr').remove(); markDirty()" class="text-red-300"><i data-lucide="trash" size="14"></i></button>
+                <button onclick="resizeRow(this, -30)" class="text-slate-300 hover:text-blue-500"><i data-lucide="chevron-down" size="14"></i></button>
+            </div></td>`;
             tr.innerHTML = html;
-            tbody.appendChild(tr);
+            patientList.appendChild(tr);
             lucide.createIcons();
-            calculateScore(tr.querySelector('.calc-val'));
+            calculateTotal(tr);
             tr.querySelectorAll('input[type="date"]').forEach(checkDate);
         }
 
-        // --- 雲端與檔案工具 ---
-        async function loadFromGithub(fileName) {
-            const token = document.getElementById('ghToken').value;
-            if (!token) return;
-            updateStatus('syncing', 'LOADING');
-            try {
-                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${fileName}?t=${Date.now()}`, { headers: { 'Authorization': `token ${token}` } });
-                if (res.ok) {
-                    const data = await res.json();
-                    const fullData = JSON.parse(decodeURIComponent(escape(atob(data.content))));
-                    rebuildTable(fullData);
-                    updateStatus('saved', 'SYNCED');
-                } else {
-                    rebuildTable({ headers: coreColumns, rows: [[]] });
-                }
-            } catch (e) { updateStatus('unsaved', 'LOAD ERROR'); }
+        function toggleBtn(btn, type) {
+            if (type === "score") {
+                btn.parentElement.querySelectorAll('.opt-btn').forEach(b => b.classList.remove('btn-active'));
+                btn.classList.add('btn-active');
+            } else {
+                btn.classList.toggle('btn-active');
+            }
+            calculateTotal(btn.closest('tr'));
+            markDirty();
+        }
+
+        function calculateTotal(tr) {
+            let total = 0;
+            tr.querySelectorAll('.btn-active').forEach(btn => {
+                const colTitle = btn.dataset.col;
+                const val = btn.innerText;
+                if (weight[colTitle]) total += weight[colTitle][val] || 0;
+            });
+            tr.querySelector('.total-cell').innerText = total;
+        }
+
+        function checkDate(el) {
+            if (!el.value) { el.classList.remove('date-red', 'date-green'); return; }
+            const diff = (new Date(el.value) - new Date().setHours(0,0,0,0)) / 86400000;
+            el.classList.remove('date-red', 'date-green');
+            if (el.classList.contains('date-start') && Math.abs(diff) <= 30) el.classList.add('date-red');
+            if (el.classList.contains('date-expiry') && diff <= 7 && diff >= -1) el.classList.add('date-green');
+            markDirty();
+        }
+
+        function resizeCol(idx, delta) {
+            record();
+            const th = document.querySelectorAll('#headerRow th')[idx + 1];
+            th.style.width = Math.max(50, th.offsetWidth + delta) + 'px';
+            markDirty(false);
+        }
+
+        function resizeRow(btn, delta) {
+            record();
+            const tr = btn.closest('tr');
+            tr.style.height = Math.max(40, tr.offsetHeight + delta) + 'px';
+            markDirty(false);
+        }
+
+        function record() {
+            undoStack.push(JSON.stringify(getData()));
+            if (undoStack.length > 30) undoStack.shift();
+            redoStack = [];
+        }
+
+        function undo() { if (undoStack.length) { redoStack.push(JSON.stringify(getData())); applyData(JSON.parse(undoStack.pop())); } }
+        function redo() { if (redoStack.length) { undoStack.push(JSON.stringify(getData())); applyData(JSON.parse(redoStack.pop())); } }
+
+        function getData() {
+            return Array.from(patientList.rows).map(tr => {
+                const rowObj = { _height: tr.style.height };
+                columns.forEach((col, i) => {
+                    const cell = tr.cells[i+1];
+                    if (col.type === "multi" || col.type === "score") {
+                        rowObj[col.title] = Array.from(cell.querySelectorAll('.btn-active')).map(b => b.innerText).join(',');
+                    } else {
+                        rowObj[col.title] = cell.querySelector('input, textarea')?.value || "";
+                    }
+                });
+                return rowObj;
+            });
+        }
+
+        function applyData(data) {
+            patientList.innerHTML = '';
+            data.forEach(d => addNewRow(d, parseInt(d._height)));
+        }
+
+        function saveToken() {
+            localStorage.setItem('gh_token_med', document.getElementById('ghToken').value);
+            location.reload();
         }
 
         async function saveToGithub() {
-            const token = document.getElementById('ghToken').value;
-            if (!token) return alert('請輸入 GitHub Token');
-            localStorage.setItem('gh_token_med', token);
-            updateStatus('syncing', 'SAVING');
-            const fullData = getCurrentData();
-            const content = btoa(unescape(encodeURIComponent(JSON.stringify(fullData))));
+            const token = localStorage.getItem('gh_token_med');
+            if (!token) return document.getElementById('tokenModal').classList.remove('hidden');
+            updateStatus('unsaved', 'SAVING');
+            const content = btoa(unescape(encodeURIComponent(JSON.stringify(getData()))));
             try {
-                const getRes = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentFilePath}`, { headers: { 'Authorization': `token ${token}` } });
-                const sha = getRes.ok ? (await getRes.json()).sha : "";
-                await fetch(`https://api.github.com/repos/${REPO}/contents/${currentFilePath}`, {
-                    method: 'PUT',
-                    headers: { 'Authorization': `token ${token}` },
-                    body: JSON.stringify({ message: `Update ${currentFilePath}`, content, sha })
+                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentFile}`, { headers: { Authorization: `token ${token}` } });
+                const sha = res.ok ? (await res.json()).sha : "";
+                await fetch(`https://api.github.com/repos/${REPO}/contents/${currentFile}`, {
+                    method: 'PUT', headers: { Authorization: `token ${token}` },
+                    body: JSON.stringify({ message: "Update", content, sha })
                 });
                 updateStatus('saved', 'SYNCED');
                 isDirty = false;
-            } catch (e) { updateStatus('unsaved', 'SYNC ERROR'); }
+            } catch (e) { updateStatus('unsaved', 'ERROR'); }
         }
 
-        async function fetchFileList() {
-            const token = document.getElementById('ghToken').value;
-            if(!token) return;
-            try {
-                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/`, { headers: { 'Authorization': `token ${token}` } });
-                const files = await res.json();
-                const listEl = document.getElementById('fileList');
-                listEl.innerHTML = files.filter(f => f.name.endsWith('.json')).map(f => `
-                    <div class="flex items-center justify-between p-3 mb-1 rounded-xl cursor-pointer transition-all ${f.name===currentFilePath?'bg-blue-600 text-white shadow-lg shadow-blue-100':'hover:bg-slate-100 text-slate-500'}" onclick="location.search='?file=${f.name}'">
-                        <span class="truncate font-medium">${f.name.replace('.json','')}</span>
-                        <i data-lucide="chevron-right" size="14" class="${f.name===currentFilePath?'text-blue-200':'text-slate-300'}"></i>
-                    </div>
-                `).join('');
-                lucide.createIcons();
-            } catch(e) {}
+        async function loadFromGithub() {
+            const token = localStorage.getItem('gh_token_med');
+            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentFile}`, { headers: { Authorization: `token ${token}` } });
+            if (res.ok) {
+                const json = await res.json();
+                applyData(JSON.parse(decodeURIComponent(escape(atob(json.content)))));
+            }
+            document.getElementById('fileNameDisplay').innerText = currentFile;
         }
 
-        function getCurrentData() {
-            const headers = Array.from(document.querySelectorAll('#headerRow th')).slice(1, -1).map(th => {
-                const title = th.querySelector('span').innerText;
-                return coreColumns.find(c => c.title === title) || { title, type: "textarea" };
-            });
-            const rows = Array.from(document.getElementById('patientList').rows).map(row => 
-                Array.from(row.cells).slice(1, -1).map(cell => {
-                    const input = cell.querySelector('input, select, textarea');
-                    if (input?.type === 'checkbox') return Array.from(cell.querySelectorAll('input:checked')).map(i => i.value);
-                    return input?.value || cell.innerText;
-                })
-            );
-            return { headers, rows };
+        async function fetchCloudFiles() {
+            const token = localStorage.getItem('gh_token_med');
+            if (!token) return;
+            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/`, { headers: { Authorization: `token ${token}` } });
+            const files = await res.json();
+            document.getElementById('fileList').innerHTML = files.filter(f => f.name.endsWith('.json')).map(f => `
+                <div onclick="switchFile('${f.name}')" class="p-2 hover:bg-blue-50 cursor-pointer rounded flex items-center gap-2 ${currentFile === f.name ? 'bg-blue-100 text-blue-700' : ''}">
+                    <i data-lucide="file-json" size="14"></i> ${f.name}
+                </div>
+            `).join('');
+            lucide.createIcons();
         }
 
-        function insertCol(index, direction) {
-            const targetPos = direction === 'left' ? index : index + 1;
-            const current = getCurrentData();
-            current.headers.splice(targetPos, 0, { title: "新欄位", type: "textarea" });
-            current.rows.forEach(r => r.splice(targetPos, 0, ""));
-            rebuildTable(current);
-            markDirty();
-        }
-
-        function deleteCol(index) {
-            if(!confirm("刪除此欄位？")) return;
-            const current = getCurrentData();
-            current.headers.splice(index, 1);
-            current.rows.forEach(r => r.splice(index, 1));
-            rebuildTable(current);
-            markDirty();
-        }
-
-        function checkDate(input) {
-            markDirty();
-            if (!input.value) { input.className = "w-full border-none bg-transparent outline-none"; return; }
-            const diff = (new Date(input.value) - new Date().setHours(0,0,0,0)) / 86400000;
-            input.classList.remove('date-red', 'date-green');
-            if (input.classList.contains('start-date') && Math.abs(diff) <= 30) input.classList.add('date-red');
-            if (input.classList.contains('expiry-date') && diff <= 7 && diff >= -1) input.classList.add('date-green');
-        }
-
-        function calculateScore(el) {
-            const row = el?.closest('tr');
-            if(!row) return;
-            let total = 0;
-            row.querySelectorAll('.calc-val').forEach(s => total += parseInt(s.value || 0));
-            row.querySelector('.score-cell').innerText = total;
-            markDirty();
+        function switchFile(name) { currentFile = name; loadFromGithub(); toggleSidebar(); }
+        
+        function createNewCloudFile() {
+            const name = prompt("請輸入新檔名 (例如: 呼吸病房.json)");
+            if (name) {
+                currentFile = name.endsWith('.json') ? name : name + '.json';
+                patientList.innerHTML = '';
+                addNewRow();
+                saveToGithub();
+                fetchCloudFiles();
+            }
         }
 
         function toggleSidebar() { document.getElementById('sidebar').classList.toggle('sidebar-hidden'); }
-        function markDirty() { isDirty = true; updateStatus('unsaved', 'MODIFIED'); }
-        function updateStatus(s, t) { 
-            document.querySelector('.status-dot').className = `status-dot status-${s} mr-1.5`; 
-            document.getElementById('statusText').innerText = t; 
-        }
-        setInterval(() => { if(isDirty) saveToGithub(); }, 30000);
+        function markDirty(rec = true) { if(rec) record(); isDirty = true; updateStatus('unsaved', 'CHANGED'); }
+        function updateStatus(s, t) { document.querySelector('.status-dot').className = `status-dot status-${s} mr-1`; document.getElementById('status').innerText = t; }
+        
+        // 增減欄位按鈕
+        function insertCol(idx) { record(); const data = getData(); columns.splice(idx+1, 0, {title: "新欄位", type: "textarea", width: 100}); renderHeader(); applyData(data); }
+        function deleteCol(idx) { if(confirm("刪除此欄位？")) { record(); const data = getData(); columns.splice(idx, 1); renderHeader(); applyData(data); } }
+
+        setInterval(() => { if(isDirty) saveToGithub(); }, 60000);
     </script>
 </body>
 </html>
