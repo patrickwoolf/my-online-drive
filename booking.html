@@ -68,6 +68,11 @@
                 <button onclick="undo()" class="p-1.5 hover:bg-slate-100 rounded" title="Undo"><i data-lucide="undo-2" size="18"></i></button>
                 <button onclick="redo()" class="p-1.5 hover:bg-slate-100 rounded" title="Redo"><i data-lucide="redo-2" size="18"></i></button>
             </div>
+            <div class="flex gap-1 border-l pl-3 items-center">
+                <button onclick="changeZoom(0.05)" class="p-1.5 hover:bg-slate-100 rounded" title="放大"><i data-lucide="zoom-in" size="18"></i></button>
+                <button onclick="changeZoom(-0.05)" class="p-1.5 hover:bg-slate-100 rounded" title="縮小"><i data-lucide="zoom-out" size="18"></i></button>
+                <span id="zoomDisplay" class="text-xs text-slate-400 font-mono w-10 text-center">100%</span>
+            </div>
         </div>
         <div class="flex items-center gap-3">
             <button onclick="addNewRow()" class="bg-blue-600 text-white px-4 py-1.5 rounded-lg hover:bg-blue-700 flex items-center gap-2 text-sm">
@@ -96,8 +101,49 @@
         const REPO = 'patrickwoolf/my-online-drive';
         let currentFile = '排床.json';
         let undoStack = [], redoStack = [], isDirty = false;
+        
+        let zoomLevel = 1.0; // 全域縮放比例狀態
+        
+        // 手動調整縮放比例
+        function changeZoom(delta) {
+            zoomLevel = Math.max(0.4, Math.min(1.5, zoomLevel + delta)); // 限制縮放範圍在 40% ~ 150%
+            applyZoom();
+        }
+        
+        // 執行縮放渲染
+        function applyZoom() {
+            const table = document.getElementById('mainTable');
+            if (table) {
+                table.style.zoom = zoomLevel;
+                // 同步更新 Header 上的百分比文字
+                document.getElementById('zoomDisplay').innerText = Math.round(zoomLevel * 100) + '%';
+            }
+        }
+        
+        // 自動計算初始比例（讓所有欄位剛好塞進螢幕寬度）
+        function autoFitZoom() {
+            const mainContainer = document.querySelector('main');
+            const table = document.getElementById('mainTable');
+            if (!mainContainer || !table) return;
+        
+            // 取得可用寬度（扣除左右 padding 內距約 32px）
+            const availableWidth = mainContainer.clientWidth - 32;
+            // 取得表格實際總寬度
+            const tableWidth = table.scrollWidth;
+        
+            if (tableWidth > availableWidth) {
+                // 如果表格超出螢幕，計算出剛好容納的比例
+                zoomLevel = availableWidth / tableWidth;
+                // 限制最低不要縮到太誇張（例如最低 50%），否則字會太小
+                if (zoomLevel < 0.5) zoomLevel = 0.5;
+            } else {
+                zoomLevel = 1.0; // 如果螢幕夠寬，就保持 100%
+            }
+            applyZoom();
+        }
 
-        const columns = [
+        // 1. 保留最初的預設欄位設定
+        const defaultColumns = [
             { title: "病人 / 聯絡資訊", type: "textarea", width: 140 },
             { title: "診斷 / 功能", type: "textarea", width: 140 },
             { title: "起始日期", type: "date-start", width: 125 },
@@ -108,21 +154,45 @@
             { title: "氣切 抽痰", type: "score", opts: ["-","<3",">3"], width: 95 },
             { title: "尿管", type: "score", opts: ["-","+"], width: 60 },
             { title: "鼻胃管", type: "score", opts: ["-","+"], width: 60 },
-            { title: "感染", type: "score", opts: ["no","yes"], width: 60 },
-            { title: "譫妄", type: "score", opts: ["no","yes"], width: 60 },
-            { title: "用藥>10?", type: "score", opts: ["no","yes"], width: 65 },
+            { title: "感染", type: "score", opts: ["-","+"], width: 60 },
+            { title: "譫妄", type: "score", opts: ["-","+"], width: 60 },
+            { title: "用藥>10?", type: "score", opts: ["-","+"], width: 65 },
             { title: "照顧者", type: "text", width: 100 },
-            { title: "家屬PSY?", type: "score", opts: ["no","yes"], width: 75 },
+            { title: "家屬PSY?", type: "score", opts: ["-","+"], width: 75 },
             { title: "預後", type: "score", opts: ["0","1","2","3","4","5","6","7","8","9","10"], width: 150 },
             { title: "總分", type: "total", width: 60 }
         ];
+        
+        // 2. 建立當前使用的 columns 變數 (深拷貝預設值)
+        let columns = JSON.parse(JSON.stringify(defaultColumns));
+
+        function updateColTitle(idx, newTitle) {
+            newTitle = newTitle.trim();
+            // 如果標題沒變，或是被清空，就不動作
+            if (!newTitle || columns[idx].title === newTitle) return;
+        
+            record(); // 記錄 Undo 狀態
+            columns[idx].title = newTitle;
+        
+            // 更新現有 DOM 中多選按鈕的 data-col 屬性，確保綁定正確
+            Array.from(patientList.rows).forEach(tr => {
+                const cell = tr.cells[idx + 1];
+                if(cell) {
+                    cell.querySelectorAll('.opt-btn').forEach(btn => {
+                        btn.dataset.col = newTitle;
+                    });
+                }
+            });
+        
+            markDirty(); // 標記為需要存檔
+        }
 
         const weight = {
             "氣切 抽痰": {"-":5, "<3":3, ">3":0},
-            "感染": {"no":5, "yes":0},
-            "譫妄": {"no":3, "yes":0},
-            "用藥>10?": {"no":5, "yes":0},
-            "家屬PSY?": {"no":10, "yes":0},
+            "感染": {"-":5, "+":0},
+            "譫妄": {"-":3, "+":0},
+            "用藥>10?": {"-":5, "+":0},
+            "家屬PSY?": {"-":10, "+":0},
             "預後": {"0":0,"1":1,"2":2,"3":3,"4":4,"5":5,"6":6,"7":7,"8":8,"9":9,"10":10}
         };
 
@@ -134,6 +204,7 @@
                 fetchCloudFiles();
             } else {
                 addNewRow();
+                autoFitZoom(); // 無代碼狀態下也自動調適一次
             }
             new Sortable(patientList, { handle: '.drag-handler', onEnd: markDirty });
         };
@@ -259,11 +330,13 @@
         function undo() { if (undoStack.length) { redoStack.push(JSON.stringify(getData())); applyData(JSON.parse(undoStack.pop())); } }
         function redo() { if (redoStack.length) { undoStack.push(JSON.stringify(getData())); applyData(JSON.parse(redoStack.pop())); } }
 
+
         function getData() {
-            return Array.from(patientList.rows).map(tr => {
+            const rows = Array.from(patientList.rows).map(tr => {
                 const rowObj = { _height: tr.style.height };
                 columns.forEach((col, i) => {
                     const cell = tr.cells[i+1];
+                    if (!cell) return;
                     if (col.type === "multi" || col.type === "score") {
                         rowObj[col.title] = Array.from(cell.querySelectorAll('.btn-active')).map(b => b.innerText).join(',');
                     } else {
@@ -272,11 +345,26 @@
                 });
                 return rowObj;
             });
+            // 將欄位定義與行資料一起回傳存檔
+            return { columns: columns, rows: rows }; 
         }
 
         function applyData(data) {
             patientList.innerHTML = '';
-            data.forEach(d => addNewRow(d, parseInt(d._height)));
+            
+            // 檢查是不是新格式 (物件內包含 columns 和 rows)
+            if (data.columns && Array.isArray(data.rows)) {
+                columns = data.columns;   // 覆蓋為雲端存檔的自訂欄位
+                renderHeader();           // 重新渲染表頭
+                data.rows.forEach(d => addNewRow(d, parseInt(d._height || 80)));
+            } 
+            // 兼容舊資料格式 (純陣列)
+            else if (Array.isArray(data)) {
+                data.forEach(d => addNewRow(d, parseInt(d._height || 80)));
+            }
+            
+            // 重點：在此處加入自動縮放，確保表格繪製完後立刻適應視窗
+            setTimeout(autoFitZoom, 50);
         }
 
         function saveToken() {
@@ -327,9 +415,14 @@
         function switchFile(name) { currentFile = name; loadFromGithub(); toggleSidebar(); }
         
         function createNewCloudFile() {
-            const name = prompt("請輸入新檔名 (例如: 呼吸病房.json)");
+            const name = prompt("請輸入新檔名 (例如: 病房.json)");
             if (name) {
                 currentFile = name.endsWith('.json') ? name : name + '.json';
+                
+                // 建立新檔時，還原為預設的欄位
+                columns = JSON.parse(JSON.stringify(defaultColumns));
+                renderHeader();
+                
                 patientList.innerHTML = '';
                 addNewRow();
                 saveToGithub();
