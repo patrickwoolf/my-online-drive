@@ -295,7 +295,7 @@
             const diff = (new Date(el.value) - new Date().setHours(0,0,0,0)) / 86400000;
             el.classList.remove('date-red', 'date-green');
             if (el.classList.contains('date-start') && Math.abs(diff) <= 30) el.classList.add('date-red');
-            if (el.classList.contains('date-expiry') && diff <= 7 && diff >= -1) el.classList.add('date-green');
+            if (el.classList.contains('date-expiry') && diff <= 7 && diff >= -7) el.classList.add('date-green');
             markDirty();
         }
 
