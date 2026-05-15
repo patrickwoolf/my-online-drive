@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MedTrack Cloud Editor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+    <style>
+        .drag-handler { cursor: grab; color: #cbd5e1; }
+        .drag-handler:active { cursor: grabbing; }
+        .date-red { background-color: #fee2e2 !important; color: #991b1b !important; }
+        .date-green { background-color: #dcfce7 !important; color: #166534 !important; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+        .status-saved { background: #22c55e; }
+        .status-unsaved { background: #ef4444; }
+        .status-syncing { background: #3b82f6; animation: pulse 1s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+        
+        table { border-collapse: separate; border-spacing: 0; }
+        th { position: sticky; top: 0; z-index: 10; background: #f8fafc; }
+        .row-action-btn { opacity: 0; transition: opacity 0.2s; }
+        tr:hover .row-action-btn { opacity: 1; }
+        
+        .col-tool-btn { visibility: hidden; }
+        th:hover .col-tool-btn { visibility: visible; }
+    </style>
+</head>
+<body class="bg-slate-50 h-screen flex flex-col overflow-hidden">
+
+    <!-- 工具列 -->
+    <header class="bg-white border-b p-2 shadow-sm shrink-0">
+        <div class="flex justify-between items-center px-2 gap-4">
+            <div class="flex items-center gap-4">
+                <h1 class="text-lg font-bold text-blue-600 flex items-center gap-2">
+                    <i data-lucide="hospital"></i> MedTrack
+                </h1>
+                <div class="flex bg-slate-100 rounded-lg p-1 gap-1">
+                    <button onclick="undo()" class="p-1.5 hover:bg-white rounded shadow-sm transition-all" title="上一步"><i data-lucide="undo-2" size="18"></i></button>
+                    <button onclick="redo()" class="p-1.5 hover:bg-white rounded shadow-sm transition-all" title="下一步"><i data-lucide="redo-2" size="18"></i></button>
+                </div>
+                <button onclick="addNewPatient()" class="bg-blue-600 text-white px-4 py-1.5 rounded-md hover:bg-blue-700 flex items-center gap-2 text-sm font-medium">
+                    <i data-lucide="user-plus" size="16"></i> 新增病人
+                </button>
+            </div>
+
+            <div class="flex items-center gap-3">
+                <input type="password" id="ghToken" placeholder="GitHub Token" 
+                       class="border rounded-md px-3 py-1.5 text-xs focus:ring-2 focus:ring-blue-400 outline-none w-48">
+                <div id="saveStatus" class="flex text-[10px] uppercase font-bold text-slate-400 items-center">
+                    <span class="status-dot status-saved mr-1"></span> 
+                    <span id="statusText">Ready</span>
+                </div>
+                <button onclick="saveToGithub()" class="bg-slate-800 text-white p-2 rounded-md hover:bg-black transition-all" title="手動同步至雲端">
+                    <i data-lucide="cloud-upload" size="18"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- 表格區域 -->
+    <main class="flex-1 overflow-auto p-4">
+        <div class="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
+            <table class="w-full text-sm text-left" id="mainTable">
+                <thead class="bg-slate-50 border-b border-slate-200">
+                    <tr id="headerRow">
+                        <th class="w-10 p-4"></th> <!-- 拖拽把手 -->
+                        <th class="p-4 border-r min-w-[150px]">
+                            <div class="flex items-center justify-between">
+                                <span>病人/聯絡</span>
+                                <div class="flex gap-1 col-tool-btn">
+                                    <button onclick="addColumn(1, 'left')" class="text-blue-500 hover:bg-blue-100 p-1 rounded"><i data-lucide="arrow-left-to-line" size="12"></i></button>
+                                    <button onclick="addColumn(1, 'right')" class="text-blue-500 hover:bg-blue-100 p-1 rounded"><i data-lucide="arrow-right-to-line" size="12"></i></button>
+                                </div>
+                            </div>
+                        </th>
+                        <th class="p-4 border-r min-w-[150px]">診斷/功能</th>
+                        <th class="p-4 border-r w-[150px]">起始日期</th>
+                        <th class="p-4 border-r">目前位置</th>
+                        <th class="p-4 border-r w-[150px]">住院期限</th>
+                        <th class="p-4 border-r">排床(1)</th>
+                        <th class="p-4 border-r">排床(2)</th>
+                        <th class="p-4 border-r">氣切抽痰</th>
+                        <th class="p-4 border-r">感染</th>
+                        <th class="p-4 border-r">譫妄</th>
+                        <th class="p-4 border-r">用藥>10</th>
+                        <th class="p-4 border-r">家屬PSY</th>
+                        <th class="p-4 border-r">預後</th>
+                        <th class="p-4 text-blue-600 font-bold">總分</th>
+                        <th class="p-4 w-16"></th> <!-- 刪除列 -->
+                    </tr>
+                </thead>
+                <tbody id="patientList">
+                    <!-- 病人列將由 JavaScript 動態生成 -->
+                </tbody>
+            </table>
+        </div>
+    </main>
+
+    <script>
+        const REPO = '您的帳號/您的儲存庫'; // 請修改此處
+        const FILE_PATH = 'patients_data.html';
+        let history = [];
+        let historyStep = -1;
+        let isDirty = false;
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+            const savedToken = localStorage.getItem('gh_token_med');
+            if (savedToken) document.getElementById('ghToken').value = savedToken;
+            
+            // 預載一行
+            addNewPatient();
+            saveHistory();
+
+            // 初始化拖拽
+            new Sortable(document.getElementById('patientList'), {
+                animation: 150,
+                handle: '.drag-handler',
+                onEnd: () => { saveHistory(); markDirty(); }
+            });
+        });
+
+        // --- 核心功能：新增病人 ---
+        function addNewPatient() {
+            const tbody = document.getElementById('patientList');
+            const tr = document.createElement('tr');
+            tr.className = "border-b border-slate-100 hover:bg-slate-50 transition-colors";
+            
+            // 根據標頭數量動態生成單元格 (考慮可能新增的自定義欄位)
+            const colCount = document.getElementById('headerRow').cells.length;
+            
+            tr.innerHTML = `
+                <td class="p-4 drag-handler"><i data-lucide="grip-vertical" size="16"></i></td>
+                <td class="p-2 border-r"><textarea class="w-full border-none focus:ring-0 resize-none p-1 bg-transparent" placeholder="輸入資訊..."></textarea></td>
+                <td class="p-2 border-r"><textarea class="w-full border-none focus:ring-0 resize-none p-1 bg-transparent"></textarea></td>
+                <td class="p-2 border-r"><input type="date" class="w-full border-none focus:ring-0 bg-transparent start-date" onchange="checkDate(this)"></td>
+                <td class="p-2 border-r"><input type="text" class="w-full border-none focus:ring-0 bg-transparent"></td>
+                <td class="p-2 border-r"><input type="date" class="w-full border-none focus:ring-0 bg-transparent expiry-date" onchange="checkDate(this)"></td>
+                <td class="p-2 border-r text-center">
+                    <div class="flex gap-1 justify-center">${[1,2,3].map(i => `<label class="text-xs px-1 hover:bg-blue-50 rounded"><input type="checkbox" value="${i}"> ${i}</label>`).join('')}</div>
+                </td>
+                <td class="p-2 border-r text-center">
+                    <div class="flex gap-1 justify-center">${[1,2,3].map(i => `<label class="text-xs px-1 hover:bg-blue-50 rounded"><input type="checkbox" value="${i}"> ${i}</label>`).join('')}</div>
+                </td>
+                <td class="p-2 border-r">
+                    <select class="w-full bg-transparent border-none text-xs calc-val" onchange="calculateScore(this)">
+                        <option value="5">-</option><option value="3">&lt;3</option><option value="0">&gt;3</option>
+                    </select>
+                </td>
+                <td class="p-2 border-r">
+                    <select class="w-full bg-transparent border-none text-xs calc-val" onchange="calculateScore(this)">
+                        <option value="5">-</option><option value="0">+</option>
+                    </select>
+                </td>
+                <td class="p-2 border-r">
+                    <select class="w-full bg-transparent border-none text-xs calc-val" onchange="calculateScore(this)">
+                        <option value="3">-</option><option value="0">+</option>
+                    </select>
+                </td>
+                <td class="p-2 border-r">
+                    <select class="w-full bg-transparent border-none text-xs calc-val" onchange="calculateScore(this)">
+                        <option value="5">-</option><option value="0">+</option>
+                    </select>
+                </td>
+                <td class="p-2 border-r">
+                    <select class="w-full bg-transparent border-none text-xs calc-val" onchange="calculateScore(this)">
+                        <option value="10">-</option><option value="0">PSY!</option>
+                    </select>
+                </td>
+                <td class="p-2 border-r">
+                    <select class="w-full bg-transparent border-none text-xs calc-val" onchange="calculateScore(this)">
+                        ${Array.from({length:11}, (_,i)=>`<option value="${i}">${i}</option>`).join('')}
+                    </select>
+                </td>
+                <td class="p-4 font-bold text-blue-600 score-cell">28</td>
+                <td class="p-4">
+                    <button onclick="deleteRow(this)" class="row-action-btn text-red-400 hover:text-red-600"><i data-lucide="trash-2" size="18"></i></button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+            lucide.createIcons();
+            calculateScore(tr.querySelector('.calc-val'));
+            markDirty();
+        }
+
+        // --- 欄位管理：動態新增自定義 Free Text 欄位 ---
+        function addColumn(baseIndex, direction) {
+            const headerRow = document.getElementById('headerRow');
+            const targetIndex = direction === 'left' ? baseIndex : baseIndex + 1;
+            
+            // 新增 Header
+            const th = document.createElement('th');
+            th.className = "p-4 border-r min-w-[120px]";
+            th.innerHTML = `
+                <div class="flex items-center justify-between">
+                    <span contenteditable="true" class="outline-none focus:bg-white px-1">新欄位</span>
+                    <button onclick="deleteColumn(this)" class="col-tool-btn text-red-400 p-1"><i data-lucide="x" size="12"></i></button>
+                </div>`;
+            headerRow.insertBefore(th, headerRow.cells[targetIndex]);
+
+            // 新增所有 Row 的 Body
+            const rows = document.getElementById('patientList').rows;
+            for (let row of rows) {
+                const td = document.createElement('td');
+                td.className = "p-2 border-r";
+                td.innerHTML = `<textarea class="w-full border-none focus:ring-0 resize-none p-1 bg-transparent" placeholder="..."></textarea>`;
+                row.insertBefore(td, row.cells[targetIndex]);
+            }
+            lucide.createIcons();
+            saveHistory();
+        }
+
+        function deleteColumn(btn) {
+            const th = btn.closest('th');
+            const index = th.cellIndex;
+            const headerRow = document.getElementById('headerRow');
+            headerRow.deleteCell(index);
+            const rows = document.getElementById('patientList').rows;
+            for (let row of rows) row.deleteCell(index);
+            saveHistory();
+        }
+
+        function deleteRow(btn) {
+            if(confirm('確定刪除此病人資料？')) {
+                btn.closest('tr').remove();
+                saveHistory();
+                markDirty();
+            }
+        }
+
+        // --- 數值計算與日期邏輯 ---
+        function calculateScore(el) {
+            const row = el.closest('tr');
+            let total = 0;
+            row.querySelectorAll('.calc-val').forEach(s => total += parseInt(s.value));
+            row.querySelector('.score-cell').innerText = total;
+            markDirty();
+        }
+
+        function checkDate(input) {
+            const today = new Date();
+            today.setHours(0,0,0,0);
+            const val = new Date(input.value);
+            if (!input.value) return;
+
+            const diff = (val - today) / (1000*60*60*24);
+            input.classList.remove('date-red', 'date-green');
+
+            if (input.classList.contains('start-date') && Math.abs(diff) <= 30) {
+                input.classList.add('date-red');
+            } else if (input.classList.contains('expiry-date') && Math.abs(diff) <= 7) {
+                input.classList.add('date-green');
+            }
+            markDirty();
+        }
+
+        // --- 工具：復原/重做 (基於 HTML 快照) ---
+        function saveHistory() {
+            const content = document.getElementById('patientList').innerHTML;
+            if (historyStep < history.length - 1) history = history.slice(0, historyStep + 1);
+            history.push(content);
+            historyStep++;
+        }
+
+        function undo() {
+            if (historyStep > 0) {
+                historyStep--;
+                document.getElementById('patientList').innerHTML = history[historyStep];
+                lucide.createIcons();
+            }
+        }
+
+        function redo() {
+            if (historyStep < history.length - 1) {
+                historyStep++;
+                document.getElementById('patientList').innerHTML = history[historyStep];
+                lucide.createIcons();
+            }
+        }
+
+        // --- 雲端儲存：GitHub API ---
+        async function saveToGithub() {
+            const token = document.getElementById('ghToken').value;
+            if (!token) { alert('請輸入 GitHub Token'); return; }
+            localStorage.setItem('gh_token_med', token);
+            
+            updateStatus('syncing', 'Saving to Cloud...');
+            
+            // 取得當前 HTML 內容 (完整克隆並去除腳本/工具)
+            const content = document.documentElement.outerHTML;
+            const base64 = btoa(unescape(encodeURIComponent(content)));
+
+            try {
+                // 先嘗試獲取檔案 SHA
+                const getRes = await fetch(`https://api.github.com/repos/${REPO}/contents/${FILE_PATH}`, {
+                    headers: { 'Authorization': `token ${token}` }
+                });
+                let sha = "";
+                if (getRes.ok) {
+                    const data = await getRes.json();
+                    sha = data.sha;
+                }
+
+                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${FILE_PATH}`, {
+                    method: 'PUT',
+                    headers: { 'Authorization': `token ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        message: "MedTrack Data Update",
+                        content: base64,
+                        sha: sha
+                    })
+                });
+
+                if (res.ok) {
+                    updateStatus('saved', 'Cloud Synced');
+                    isDirty = false;
+                } else {
+                    throw new Error('Upload failed');
+                }
+            } catch (e) {
+                updateStatus('unsaved', 'Sync Error');
+                console.error(e);
+            }
+        }
+
+        function markDirty() {
+            isDirty = true;
+            updateStatus('unsaved', 'Unsaved Changes');
+        }
+
+        function updateStatus(s, t) {
+            document.querySelector('.status-dot').className = `status-dot status-${s} mr-1`;
+            document.getElementById('statusText').innerText = t;
+        }
+
+        // 每 30 秒自動儲存一次 (如果有更動)
+        setInterval(() => { if(isDirty) saveToGithub(); }, 30000);
+    </script>
+</body>
+</html>
