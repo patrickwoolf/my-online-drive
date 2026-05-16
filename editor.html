@@ -74,6 +74,18 @@
         table { border-collapse: collapse; width: 100%; margin: 10px 0; border: 1px solid #cbd5e1; }
         td { border: 1px solid #cbd5e1; padding: 8px; min-width: 40px; }
         img.uploading { opacity: 0.4; filter: blur(2px); cursor: wait; border: 2px dashed #3b82f6; }
+        
+        #editor ul {
+            list-style-type: disc !important;
+            padding-left: 1.5rem !important;
+            margin-top: 0.5rem !important;
+            margin-bottom: 0.5rem !important;
+        }
+        
+        #editor li {
+            display: list-item !important;
+            margin-bottom: 0.25rem !important;
+        }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900 font-sans h-screen flex flex-col overflow-hidden sidebar-active">
@@ -127,6 +139,7 @@
             <div class="p-1 border-b bg-slate-50/50 toolbar-scroll items-center gap-1">
                 <button onclick="exec('bold')" class="p-2 min-w-[40px] hover:bg-white rounded"><i data-lucide="bold" size="16"></i></button>
                 <button onclick="exec('italic')" class="p-2 min-w-[40px] hover:bg-white rounded"><i data-lucide="italic" size="16"></i></button>
+                <button onclick="exec('insertUnorderedList')" class="p-2 min-w-[40px] hover:bg-white rounded" title="項目符號"><i data-lucide="list" size="16"></i></button>
                 <div class="h-6 w-px bg-slate-300 mx-1"></div>
                 <button onclick="insertTable()" class="p-2 min-w-[40px] text-slate-700 hover:bg-white rounded" title="插入表格"><i data-lucide="table" size="18"></i></button>
                 
