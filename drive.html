@@ -45,6 +45,12 @@
             display: list-item !important;
             margin-bottom: 0.25rem !important;
         }
+        
+        #editor blockquote {
+            margin-left: 2rem !important; /* 強制留出左邊距 */
+            border-left: 2px solid #e2e8f0; /* 選填：加上淡淡的左邊線，會讓筆記更有層次感 */
+            padding-left: 0.75rem;
+        }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900 font-sans h-dvh flex flex-col overflow-hidden">
@@ -90,6 +96,8 @@
                 <button onclick="exec('bold')" class="p-2 min-w-[40px] hover:bg-white rounded"><i data-lucide="bold" size="16"></i></button>
                 <button onclick="exec('italic')" class="p-2 min-w-[40px] hover:bg-white rounded"><i data-lucide="italic" size="16"></i></button>
                 <button onclick="exec('insertUnorderedList')" class="p-2 min-w-[40px] hover:bg-white rounded" title="項目符號"><i data-lucide="list" size="16"></i></button>
+                <button onclick="exec('outdent')" class="p-2 min-w-[40px] hover:bg-white rounded" title="減少縮排 (後退)"><i data-lucide="indent-decrease" size="16"></i></button>
+<button onclick="exec('indent')" class="p-2 min-w-[40px] hover:bg-white rounded" title="增加縮排 (往前)"><i data-lucide="indent-increase" size="16"></i></button>
                 <div class="h-6 w-px bg-slate-300 mx-1"></div>
                 <button onclick="insertTable()" class="p-2 min-w-[40px] text-slate-700 hover:bg-white rounded"><i data-lucide="table" size="18"></i></button>
                 <div class="grid grid-cols-3 gap-px bg-slate-300 border border-slate-300 rounded overflow-hidden mx-1 shrink-0">
