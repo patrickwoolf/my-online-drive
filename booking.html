@@ -157,7 +157,7 @@
             { title: "感染", type: "score", opts: ["-","+"], width: 60 },
             { title: "譫妄", type: "score", opts: ["-","+"], width: 60 },
             { title: "用藥>10?", type: "score", opts: ["-","+"], width: 65 },
-            { title: "照顧者", type: "text", width: 100 },
+            { title: "照顧者", type: "score", opts: ["其他","看護","巴氏"], width: 140 },
             { title: "家屬PSY?", type: "score", opts: ["-","+"], width: 75 },
             { title: "預後", type: "score", opts: ["0","1","2","3","4","5","6","7","8","9","10"], width: 150 },
             { title: "總分", type: "total", width: 60 }
@@ -192,6 +192,7 @@
             "感染": {"-":5, "+":0},
             "譫妄": {"-":3, "+":0},
             "用藥>10?": {"-":5, "+":0},
+            "照顧者": {"其他":0, "看護":5, "巴氏":7},
             "家屬PSY?": {"-":10, "+":0},
             "預後": {"0":0,"1":1,"2":2,"3":3,"4":4,"5":5,"6":6,"7":7,"8":8,"9":9,"10":10}
         };
@@ -361,6 +362,15 @@
             // 檢查是不是新格式 (物件內包含 columns 和 rows)
             if (data.columns && Array.isArray(data.rows)) {
                 columns = data.columns;   // 覆蓋為雲端存檔的自訂欄位
+                
+                // 補上這段：強制將舊檔案中的照顧者欄位更新為最新的按鈕型態
+                const targetCol = columns.find(c => c.title === "照顧者");
+                if (targetCol && targetCol.type === "text") {
+                    targetCol.type = "score";
+                    targetCol.opts = ["其他", "看護", "巴氏"];
+                    targetCol.width = 140;
+                }
+                
                 renderHeader();           // 重新渲染表頭
                 data.rows.forEach(d => addNewRow(d, parseInt(d._height || 80)));
             } 
