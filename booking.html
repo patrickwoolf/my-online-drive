@@ -303,22 +303,28 @@
             record();
             // 取得對應的 th 元素 (index + 1 是因為第一欄是拖拉手把)
             const th = document.querySelectorAll('#headerRow th')[idx + 1];
-            // 直接操作 style.width 並確保不小於最小寬度
+            
             let currentW = th.offsetWidth;
             let newW = currentW + delta;
-            
             if (newW < 50) newW = 50; 
             
+            // 1. 同步更新記憶體中的 columns 寬度，這樣 getData() 才能存到正確的值
+            columns[idx].width = newW;
+            
+            // 2. 更新 DOM 寬度
             th.style.width = newW + 'px';
-            th.style.minWidth = newW + 'px'; // 加上 minWidth 確保縮小生效
+            th.style.minWidth = newW + 'px';
+            
             markDirty(false);
         }
         
         function resizeRow(btn, delta) {
-            record();
+            // 移除這裡的 record()，避免與後續的 markDirty 衝突造成歷史紀錄混亂
             const tr = btn.closest('tr');
             tr.style.height = Math.max(40, tr.offsetHeight + delta) + 'px';
-            markDirty(false);
+            
+            // 改為 markDirty(true) 或直接 markDirty()，確保高度調整後會觸發雲端同步
+            markDirty(); 
         }
 
         function record() {
