@@ -31,6 +31,8 @@
         tr:hover .row-tool { opacity: 1; }
         .sidebar-hidden { transform: translateX(-100%); }
         #sidebar { transition: transform 0.3s ease; z-index: 100; }
+        
+        
     </style>
 </head>
 <body class="bg-slate-50 h-screen flex flex-col overflow-hidden text-slate-700">
@@ -86,7 +88,7 @@
         </div>
     </header>
 
-    <main class="flex-1 overflow-auto p-4">
+    <main class="flex-1 overflow-auto p-4 relative">
         <div class="bg-white rounded-xl shadow-lg border border-slate-200 inline-block min-w-full overflow-hidden">
             <table id="mainTable">
                 <thead class="bg-slate-50 sticky top-0 z-10">
@@ -174,10 +176,14 @@
             record(); // 記錄 Undo 狀態
             columns[idx].title = newTitle;
         
-            // 更新現有 DOM 中多選按鈕的 data-col 屬性，確保綁定正確
+            const thSpan = document.querySelectorAll('#headerRow th')[idx + 1]?.querySelector('span');
+            if (thSpan) thSpan.setAttribute('title', newTitle);
+        
+            // 【以及讓資料儲存格 td 的 title 即時同步】
             Array.from(patientList.rows).forEach(tr => {
                 const cell = tr.cells[idx + 1];
                 if(cell) {
+                    cell.setAttribute('title', newTitle); // 更新 td 的提示
                     cell.querySelectorAll('.opt-btn').forEach(btn => {
                         btn.dataset.col = newTitle;
                     });
@@ -217,9 +223,9 @@
                 const th = document.createElement('th');
                 th.style.width = col.width + 'px';
                 th.style.minWidth = col.width + 'px'; // 確保縮小寬度生效
-                th.className = "p-2 border-b border-r text-xs relative bg-slate-50 font-bold";
+                th.className = "p-2 border-b border-r text-xs sticky top-0 z-10 bg-slate-50 font-bold shadow-[0_1px_0_0_#e2e8f0]";
                 th.innerHTML = `
-                    <span contenteditable="true" class="outline-none focus:bg-yellow-50 px-1" 
+                    <span contenteditable="true" title="${col.title}" class="outline-none focus:bg-yellow-50 px-1" 
                           onblur="updateColTitle(${idx}, this.innerText)">${col.title}</span>
                     <div class="col-tools">
                         <button onclick="resizeCol(${idx}, 40)"><i data-lucide="maximize-2" size="12"></i></button>
@@ -240,7 +246,7 @@
             let html = `<td class="drag-handler text-center border-r"><i data-lucide="grip-vertical" size="14"></i></td>`;
             
             columns.forEach(col => {
-                html += `<td><div class="fill-content">`;
+                html += `<td title="${col.title}"><div class="fill-content">`;
                 if (col.type === "textarea") {
                     html += `<textarea class="fill-box" oninput="markDirty()">${data[col.title] || ''}</textarea>`;
                 } else if (col.type === "text") {
@@ -455,6 +461,26 @@
         function deleteCol(idx) { if(confirm("刪除此欄位？")) { record(); const data = getData(); columns.splice(idx, 1); renderHeader(); applyData(data); } }
 
         setInterval(() => { if(isDirty) saveToGithub(); }, 60000);
+        
+        function toggleBtn(btn, type) {
+            if (type === "score") {
+                // 先檢查當前點擊的按鈕是不是已經被選取了
+                const isAlreadyActive = btn.classList.contains('btn-active');
+                
+                // 清除同一格內所有按鈕的選取狀態
+                btn.parentElement.querySelectorAll('.opt-btn').forEach(b => b.classList.remove('btn-active'));
+                
+                // 如果原本沒被選取，現在就選取它；如果原本就選取了，這時候就不做動作（達到取消選取效果）
+                if (!isAlreadyActive) {
+                    btn.classList.add('btn-active');
+                }
+            } else {
+                // multi 多選模式保持原樣即可
+                btn.classList.toggle('btn-active');
+            }
+            calculateTotal(btn.closest('tr'));
+            markDirty();
+        }
     </script>
 </body>
 </html>
