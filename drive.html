@@ -7,6 +7,9 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
+    <!-- 新的、高速穩定的套件引入（已更換穩定的 cdnjs 節點並加入 defer 非同步載入） -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" defer></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html-docx-js/0.3.1/html-docx.js" defer></script>
     <style>
         #scroll-container { height: calc(100vh - 120px); overflow-y: auto; -webkit-overflow-scrolling: touch; background: #f8fafc; }
         #editor { min-height: 100%; padding: 2rem; outline: none; background: white; margin: 0; transition: transform 0.2s ease-in-out; transform-origin: top left; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); width: 100%; box-sizing: border-box; }
@@ -123,6 +126,20 @@
                     <button onclick="resetZoom()" id="zoomPercent" class="text-[10px] font-bold w-10 text-center">100%</button>
                     <button onclick="changeZoom(0.1)" class="p-2 hover:bg-slate-200 rounded-md"><i data-lucide="zoom-in" size="16"></i></button>
                 </div>
+                
+                <div class="inline-block shrink-0 ml-1">
+                    <button onclick="toggleExportMenu(event)" id="exportBtn" class="p-2 text-slate-600 hover:bg-slate-200 rounded-md flex items-center gap-1" title="匯出檔案">
+                        <i data-lucide="download" size="18"></i>
+                        <i data-lucide="chevron-down" size="12"></i>
+                    </button>
+                    <!-- 使用固定定位 fixed，配合超高 z-50，確保絕對不會被編輯器擋住 -->
+                    <div id="exportDropdown" class="hidden fixed w-48 rounded-md shadow-xl bg-white border border-slate-200 shadow-slate-300/50 z-[100]">
+                        <div class="py-1" role="menu">
+                            <button onclick="exportFile('pdf')" class="w-full text-left block px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 flex items-center gap-2"><i data-lucide="file-text" size="14" class="text-red-500 shrink-0"></i> <span>下載為 PDF</span></button>
+                        </div>
+                    </div>
+                </div>
+                
                 <div class="ml-auto pr-2 shrink-0">
                     <span id="currentFileName" class="text-xs font-medium text-slate-400 truncate max-w-[100px] block">No file</span>
                 </div>
@@ -535,6 +552,77 @@
         function handleImageSelect(e) { uploadImageAndInsert(e.target.files[0]); }
         document.getElementById('editor').addEventListener('input', () => { isDirty = true; updateStatus('unsaved', 'Unsaved'); });
         setInterval(() => { if (isDirty) saveFile(); }, 15000);
+        
+        // 控制選單顯示、隱藏與智慧定位
+        function toggleExportMenu(e) {
+            e.stopPropagation();
+            const menu = document.getElementById('exportDropdown');
+            const btn = document.getElementById('exportBtn');
+            
+            menu.classList.toggle('hidden');
+            
+            if (!menu.classList.contains('hidden')) {
+                lucide.createIcons();
+                
+                // 動態計算按鈕在螢幕上的絕對位置，讓 fixed 選單精準黏在按鈕下方
+                const rect = btn.getBoundingClientRect();
+                menu.style.top = `${rect.bottom + window.scrollY + 4}px`;
+                // 靠右對齊按鈕
+                menu.style.left = `${rect.right - menu.offsetWidth}px`;
+            }
+        }
+        
+        // 點擊畫面其他地方自動收起選單
+        document.addEventListener('click', () => {
+            document.getElementById('exportDropdown')?.classList.add('hidden');
+        });
+                                
+        // 核心匯出分配器 (全面修正字串跳脫語法錯誤，保證不影響初始載入)
+        async function exportFile(type) {
+            const editor = document.getElementById('editor');
+            let editorContent = editor.innerHTML.trim();
+            const cleanCheck = editorContent.replace(/<[^>]*>/g, '').replace(/\s/g, '');
+            
+            if (cleanCheck === "" && !editorContent.includes('<img') && !editorContent.includes('<table')) {
+                alert("編輯器內目前沒有實體內容可以匯出喔！請先輸入一些文字。");
+                return;
+            }
+        
+            let baseName = "document";
+            if (currentFilePath) {
+                baseName = currentFilePath.split('/').pop().split('.')[0];
+            } else {
+                baseName = `doc_${new Date().toISOString().slice(0, 10)}`;
+            }
+        
+            // 匯出排版專用樣式表
+            const commonStyles = `
+                body { font-family: Arial, sans-serif; color: #334155; line-height: 1.5; padding: 40px; background: #ffffff; max-width: 800px; margin: 0 auto; }
+                table { border-collapse: collapse; width: 100%; margin: 15px 0; border: 1px solid #cbd5e1 !important; }
+                td { border: 1px solid #cbd5e1 !important; padding: 10px 8px; min-width: 60px; height: 40px; vertical-align: middle; }
+                blockquote { margin-left: 20px; border-left: 3px solid #e2e8f0; padding-left: 10px; color: #64748b; font-style: italic; }
+                ul { list-style-type: disc !important; padding-left: 20px; margin: 10px 0; }
+                li { display: list-item !important; margin-bottom: 4px; }
+                img { max-width: 100%; height: auto; display: block; margin: 10px 0; }
+                .export-tip { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; padding: 12px; border-radius: 6px; font-size: 14px; margin-bottom: 20px; font-weight: 500; }
+                @media print { .export-tip { display: none !important; } }
+            `;
+        
+            document.getElementById('exportDropdown').classList.add('hidden');
+        
+            updateStatus('syncing', '正在開啟 PDF 列印視窗...');
+            const printWindow = window.open('', '_blank');
+            if (!printWindow) {
+                alert("新分頁被瀏覽器彈出式視窗攔截了！請允許此網站開啟彈出式視窗.");
+                return;
+            }
+            printWindow.document.write(`
+                <!DOCTYPE html><html><head><meta charset="UTF-8"><title>${baseName}</title><style>${commonStyles}</style></head>
+                <body>${editorContent}<script>window.onload = function() { setTimeout(function() { window.print(); }, 300); };<\/script></body></html>
+            `);
+            printWindow.document.close();
+            updateStatus('saved', '已開啟列印視窗');
+        }
     </script>
 </body>
 </html>
