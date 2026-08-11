@@ -30,6 +30,8 @@
         .row-tool { opacity: 0; transition: opacity 0.2s; }
         tr:hover .row-tool { opacity: 1; }
         .sidebar-hidden { transform: translateX(-100%); }
+        /* 新增選定列的高亮樣式 */
+        tr.selected-row { background-color: #eff6ff !important; } 
         #sidebar { transition: transform 0.3s ease; z-index: 100; }
         
         
@@ -243,6 +245,22 @@
         function addNewRow(data = {}, height = 80) {
             const tr = document.createElement('tr');
             tr.style.height = height + 'px';
+            
+            // 點擊整列時，切換選定狀態
+            tr.onclick = function(e) {
+                // 如果點擊的是按鈕、輸入框、刪除鍵，就不觸發選取列
+                if (e.target.closest('button', 'input', 'textarea', '.drag-handler')) return;
+                
+                const alreadySelected = this.classList.contains('selected-row');
+                // 清除其他列的選取狀態
+                Array.from(patientList.rows).forEach(r => r.classList.remove('selected-row'));
+                
+                // 如果原本沒被選取，就加上選取樣式
+                if (!alreadySelected) {
+                    this.classList.add('selected-row');
+                }
+            };
+
             let html = `<td class="drag-handler text-center border-r"><i data-lucide="grip-vertical" size="14"></i></td>`;
             
             columns.forEach(col => {
@@ -270,11 +288,23 @@
                 <button onclick="resizeRow(this, -30)" class="text-slate-300 hover:text-blue-500"><i data-lucide="chevron-down" size="14"></i></button>
             </div></td>`;
             tr.innerHTML = html;
-            patientList.appendChild(tr);
+
+            // --- 核心修改：判斷插入位置 ---
+            const selectedRow = patientList.querySelector('.selected-row');
+            if (selectedRow) {
+                // 如果有選定列，插入到選定列的下一個兄弟節點之前
+                patientList.insertBefore(tr, selectedRow.nextSibling);
+            } else {
+                // 如果沒有選定列，加在最下面
+                patientList.appendChild(tr);
+            }
+            // ----------------------------
+
             lucide.createIcons();
             calculateTotal(tr);
             tr.querySelectorAll('input[type="date"]').forEach(checkDate);
         }
+
 
         function toggleBtn(btn, type) {
             if (type === "score") {
