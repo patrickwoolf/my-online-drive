@@ -496,39 +496,67 @@
     function createNewFile() { let name = prompt("新檔名:"); if (!name) return; if (!name.endsWith('.json')) name += '.json'; currentFile = name; workbook = { "Sheet1": { data: [["",""]], rowH:[35], colW:[100,100], format: "wrap", cellStyles: {} } }; saveToCloud().then(fetchFiles); }
 
     function moveSelectedRow(direction) {
-        // 1. 尋找目前被選取（包含 selected 樣式）的儲存格
         const selectedCell = document.querySelector('td.selected');
         if (!selectedCell) {
             alert('請先點選想要移動的行（格子）');
             return;
         }
 
-        // 2. 獲取該格所在的 <tr> 元素
-        const currentRow = selectedCell.closest('tr');
-        if (!currentRow) return;
+        const r = parseInt(selectedCell.dataset.r);
+        const sheet = workbook[activeSheet];
+        const totalRows = sheet.data.length;
 
-        // 3. 根據方向判斷要交換的目標行
         if (direction === 'up') {
-            const prevRow = currentRow.previousElementSibling;
-            // 確保上方有元素，且不能換到 th（標頭欄位）那一行
-            if (prevRow && prevRow.querySelector('td')) {
-                // 紀錄當前 focus 的元素，避免移動後失去焦點
-                const activeEl = document.activeElement;
-                currentRow.parentNode.insertBefore(currentRow, prevRow);
-                if (activeEl && currentRow.contains(activeEl)) activeEl.focus();
-                if (typeof saveState === 'function') saveState(); // 如果你有實作 Undo 系統可加上這行
+            if (r === 0) return; // 已在最頂端
+            pushHistory();
+
+            // 交換 data
+            [sheet.data[r], sheet.data[r - 1]] = [sheet.data[r - 1], sheet.data[r]];
+            // 交換 rowH
+            [sheet.rowH[r], sheet.rowH[r - 1]] = [sheet.rowH[r - 1], sheet.rowH[r]];
+            // 交換 cellStyles（如果有的話）
+            if (sheet.cellStyles) {
+                const newStyles = {};
+                Object.entries(sheet.cellStyles).forEach(([key, val]) => {
+                    const [kr, kc] = key.split('-').map(Number);
+                    if (kr === r) newStyles[`${r - 1}-${kc}`] = val;
+                    else if (kr === r - 1) newStyles[`${r}-${kc}`] = val;
+                    else newStyles[key] = val;
+                });
+                sheet.cellStyles = newStyles;
             }
+
         } else if (direction === 'down') {
-            const nextRow = currentRow.nextElementSibling;
-            if (nextRow) {
-                const activeEl = document.activeElement;
-                // insertBefore 是把目前行插到「下下行」的前面，等同於往下移一行
-                currentRow.parentNode.insertBefore(currentRow, nextRow.nextElementSibling);
-                if (activeEl && currentRow.contains(activeEl)) activeEl.focus();
-                if (typeof saveState === 'function') saveState(); // 如果你有實作 Undo 系統可加上這行
+            if (r === totalRows - 1) return; // 已在最底端
+            pushHistory();
+
+            [sheet.data[r], sheet.data[r + 1]] = [sheet.data[r + 1], sheet.data[r]];
+            [sheet.rowH[r], sheet.rowH[r + 1]] = [sheet.rowH[r + 1], sheet.rowH[r]];
+            if (sheet.cellStyles) {
+                const newStyles = {};
+                Object.entries(sheet.cellStyles).forEach(([key, val]) => {
+                    const [kr, kc] = key.split('-').map(Number);
+                    if (kr === r) newStyles[`${r + 1}-${kc}`] = val;
+                    else if (kr === r + 1) newStyles[`${r}-${kc}`] = val;
+                    else newStyles[key] = val;
+                });
+                sheet.cellStyles = newStyles;
             }
         }
+
+        // 重新渲染，並保持選取狀態在移動後的行
+        const targetR = direction === 'up' ? r - 1 : r + 1;
+        initTable();
+
+        // 移動後重新選取對應的格子
+        const newSelected = document.querySelector(`td[data-r="${targetR}"][data-c="${selectedCell.dataset.c}"]`);
+        if (newSelected) {
+            startCell = { r: targetR, c: parseInt(selectedCell.dataset.c) };
+            endCell = { r: targetR, c: parseInt(selectedCell.dataset.c) };
+            highlightRange();
+        }
     }
+
 
 </script>
 </body>
