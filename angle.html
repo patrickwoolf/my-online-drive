@@ -109,14 +109,20 @@
       #res-wrap.min #res-list{display:none;}
       #res-wrap.min #res-arrow{transform:rotate(-90deg);}
       #res-arrow{transition:transform .15s;}
+      #set-btn{position:absolute;top:8px;right:8px;z-index:11;width:34px;height:34px;border-radius:50%;border:1px solid #334155;background:#1e293bcc;color:#e2e8f0;font-size:1rem;cursor:pointer;}
+      #set-panel{display:none;position:absolute;top:48px;right:8px;z-index:11;width:200px;background:#1e293bee;border:1px solid #334155;border-radius:10px;padding:10px;font-size:.74rem;color:#94a3b8;}
+      #set-panel.on{display:block;}
+      #set-panel label{display:block;margin-bottom:8px;}
+      #set-panel label span{float:right;color:#38bdf8;}
+      #set-panel input{width:100%;}
 
 
     </style>
   </head>
   <body>
-  <button class="btn b-gray" onclick="toggleSide()">☰</button>
 
   <div id="topbar">
+    <button class="btn b-gray" onclick="toggleSide()">☰</button>
     <h1>📐 量角度</h1>
     <button class="btn b-blue" onclick="openCam()">📷 相機</button>
     <button class="btn b-ind"  onclick="$('galleryInput').click()">🖼 相簿</button>
@@ -140,6 +146,8 @@
       <canvas id="mainCanvas"></canvas>
     </div>
     <div id="no-img"><div style="font-size:2.8rem">📐</div><p>拍照或選圖後開始量測<br><small style="color:#334155">雙指捏合縮放・底部快捷鍵</small></p></div>
+    <button id="set-btn" onclick="$('set-panel').classList.toggle('on')">⚙</button>
+
 
     <!-- 縮放快捷列 -->
     <div id="zoom-bar">
@@ -151,6 +159,16 @@
       <button class="zb" onclick="zoomFitH()">全高</button>
       <div class="zb sep">|</div>
       <div id="zoom-pct">100%</div>
+    </div>
+
+    <div id="set-panel">
+      <label>點大小 <span id="v-dot">1.0</span>
+        <input type="range" id="s-dot" min="0.3" max="5" step="0.1" value="1"></label>
+      <label>線寬 <span id="v-line">1.0</span>
+        <input type="range" id="s-line" min="0.3" max="5" step="0.1" value="1"></label>
+      <label>文字 <span id="v-font">1.0</span>
+        <input type="range" id="s-font" min="0.3" max="8" step="0.1" value="1"></label>
+      <button class="zb" onclick="resetSet()">重設</button>
     </div>
   </div>
 
@@ -175,7 +193,7 @@
       </div>
       <button id="adj-done" onclick="closeAdj()">✅ 完成</button>
     </div>
-    <div id="res-wrap" style="display:none">
+    <div id="res-wrap" style="display:none" class="min">
       <div id="res-title" onclick="$('res-wrap').classList.toggle('min')">
         <span>📋 量測結果</span><span id="res-arrow">▼</span>
       </div>
@@ -215,12 +233,38 @@
 
 
   <script>
+  let LWK=1;
+  const ANG_TXT_K=10.5;   // 角度文字離頂點的距離(以點半徑 R 為單位),越小越靠近
+  const SET_DEF={dot:1,line:1,font:1};
+  let SET=Object.assign({},SET_DEF,JSON.parse(localStorage.getItem('angle_set')||'{}'));
+
+  function initSet(){
+    ['dot','line','font'].forEach(k=>{
+      const el=$('s-'+k);
+      el.value=SET[k];$('v-'+k).textContent=(+SET[k]).toFixed(1);
+      el.oninput=()=>{
+        SET[k]=+el.value;$('v-'+k).textContent=SET[k].toFixed(1);
+        localStorage.setItem('angle_set',JSON.stringify(SET));
+        if(imgObj)drawAll();
+      };
+    });
+  }
+  function resetSet(){
+    SET={...SET_DEF};localStorage.setItem('angle_set',JSON.stringify(SET));
+    initSet();if(imgObj)drawAll();
+  }
   const $=id=>document.getElementById(id);
   const REPO='patrickwoolf/my-online-drive', BRANCH='main', DIR='assets/angle-measure';
   let namePrefix='';          // 存檔用的檔名前綴
   const TOKEN=()=>localStorage.getItem('gh_token')||'';
   const ghHeaders=raw=>({'Authorization':`token ${TOKEN()}`,'Accept':raw?'application/vnd.github.raw':'application/vnd.github.v3+json'});
   const apiUrl=p=>`https://api.github.com/repos/${REPO}/contents/${p.split('/').map(encodeURIComponent).join('/')}`;
+
+  function canvasAtScale1(){          // 回傳固定大小標記的 canvas blob 前置作業
+    const s=scale;scale=1;drawAll();
+    return ()=>{scale=s;drawAll();};   // 回傳還原函式
+  }
+
 
   function ensureToken(){
     if(TOKEN())return true;
@@ -293,7 +337,9 @@
   function applyT(){
     $('zoom-layer').style.transform=`translate(${ox}px,${oy}px) scale(${scale})`;
     $('zoom-pct').textContent=Math.round(scale*100)+'%';
+    if(imgObj)drawAll();
   }
+
 
   // 以視窗中心為基準縮放
   function zoomAround(newScale, pivotWx, pivotWy){
@@ -515,7 +561,7 @@
 
   function snapCenter(x,y){
     const cv=$('mainCanvas');
-    const R=Math.max(cv.width,cv.height)*0.03;
+    const R=uiK().R*2.3;
     for(const c of circles)
       if(dist(c.center,{x,y})<R) return{x:c.center.x,y:c.center.y,_cid:c.id};
     return null;
@@ -572,7 +618,7 @@
 
   function findHit(x,y){
     const cv=$('mainCanvas');
-    const R=Math.max(cv.width,cv.height)*0.028;
+    const R=uiK().R*2.15;
     for(let i=0;i<angles.length;i++)
       for(let p=0;p<3;p++)
         if(dist(angles[i].pts[p],{x,y})<R) return{kind:'angle',idx:i,pi:p};
@@ -654,15 +700,34 @@
   }
   function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y);}
 
+  function uiK(){
+    const cv=$('mainCanvas');
+    const base=Math.max(cv.width,cv.height)*0.003;
+    const k=Math.min(Math.max(1/scale,0.05),40);
+    return {R:base*k*SET.dot, k};
+  }
+
   // 繪製
   function drawAll(){
     const cv=$('mainCanvas'),ctx=cv.getContext('2d');
+    if(!ctx._patched){
+      const d=Object.getOwnPropertyDescriptor(CanvasRenderingContext2D.prototype,'lineWidth');
+      const sd=ctx.setLineDash.bind(ctx);
+      Object.defineProperty(ctx,'lineWidth',{
+        get(){return d.get.call(this)/LWK;},
+        set(v){d.set.call(this,v*LWK);}
+      });
+      ctx.setLineDash=a=>sd(a.map(v=>v*LWK));
+      ctx._patched=true;
+    }
+    const {R,k}=uiK();
+    LWK=k*SET.line;
+
     ctx.clearRect(0,0,cv.width,cv.height);
     if(imgObj)ctx.drawImage(imgObj,0,0);
-    const R=Math.max(cv.width,cv.height)*0.013;
     circles.forEach((c,i)=>drawCircle(ctx,c,R,i));
     if(tool==='cir'&&wip.length===1){
-      drawDot(ctx,wip[0],CCOLS[cIdx%CCOLS.length],R,'端①');
+      drawDot(ctx,wip[0],CCOLS[cIdx%CCOLS.length],R,'');
     }
     angles.forEach(a=>{
       const d=a.showSupp?(180-a.deg).toFixed(1):a.deg.toFixed(1);
@@ -674,7 +739,8 @@
         ctx.beginPath();ctx.moveTo(wip[0].x,wip[0].y);ctx.lineTo(wip[1].x,wip[1].y);
         ctx.strokeStyle=col;ctx.lineWidth=2;ctx.setLineDash([6,4]);ctx.stroke();ctx.setLineDash([]);
       }
-      ['①','②頂','③'].forEach((l,i)=>{if(wip[i])drawDot(ctx,wip[i],col,R,l);});    }
+      wip.forEach(p=>drawDot(ctx,p,col,R,''));
+    }
     if(adj){
       let p=null;
       if(adj.kind==='angle')p=angles[adj.idx]?.pts[adj.pi];
@@ -686,6 +752,7 @@
       }
     }
   }
+
 
   function drawCircle(ctx,c,R,i){
     ctx.beginPath();ctx.arc(c.center.x,c.center.y,c.radius,0,Math.PI*2);
@@ -717,7 +784,8 @@
       ctx.beginPath();ctx.arc(A.x,A.y,R*3,aE,aC,false);
       ctx.lineTo(A.x,A.y);ctx.closePath();ctx.fillStyle='#f59e0b33';ctx.fill();
       const mid=(aE+aC)/2;
-      txt(ctx,degStr+'°',A.x+Math.cos(mid)*R*5.5,A.y+Math.sin(mid)*R*5.5,R,'#f59e0b');
+      const off=R*3+cv_base()*0.03*uiK().k*SET.font;
+      txt(ctx,degStr+'°',A.x+Math.cos(mid)*off,A.y+Math.sin(mid)*off,R,col);
     } else {
       [[A,B],[A,C]].forEach(([p1,p2])=>{
         ctx.beginPath();ctx.moveTo(p1.x,p1.y);ctx.lineTo(p2.x,p2.y);
@@ -729,9 +797,11 @@
       ctx.beginPath();ctx.arc(A.x,A.y,R*3,a1,a2,false);
       ctx.lineTo(A.x,A.y);ctx.closePath();ctx.fillStyle=col+'33';ctx.fill();
       const mid=(a1+a2)/2;
-      txt(ctx,degStr+'°',A.x+Math.cos(mid)*R*5.5,A.y+Math.sin(mid)*R*5.5,R,col);
+      const off=R*ANG_TXT_K;
+      txt(ctx,degStr+'°',A.x+Math.cos(mid)*off,A.y+Math.sin(mid)*off,R,col);
+
     }
-    ['頂','B','C'].forEach((l,i)=>drawDot(ctx,pts[i],col,R,l));
+    pts.forEach(p=>drawDot(ctx,p,col,R,''));
   }
 
   function drawDot(ctx,p,col,R,lbl){
@@ -740,10 +810,12 @@
     if(lbl)txt(ctx,lbl,p.x+R+3,p.y-R,R,'#fff');
   }
   function txt(ctx,s,x,y,R,col){
-    ctx.font=`bold ${R*1.35}px Arial`;
+    const fs=Math.max(cv_base()*0.012*uiK().k*SET.font,1);
+    ctx.font=`bold ${fs}px Arial`;
     ctx.strokeStyle='#000';ctx.lineWidth=3;ctx.strokeText(s,x,y);
     ctx.fillStyle=col;ctx.fillText(s,x,y);
   }
+  function cv_base(){const cv=$('mainCanvas');return Math.max(cv.width,cv.height);}
 
   function updateHint(){
     if(!imgObj){$('hint').innerHTML='📷 請先拍照或選取圖片';return;}
@@ -788,6 +860,7 @@
     });
   }
 
+  
   function togS(id){const a=angles.find(x=>x.id===id);if(a){a.showSupp=!a.showSupp;updateList();drawAll();}}
   function delA(id){angles=angles.filter(a=>a.id!==id);updateList();drawAll();}
   function delCircle(id){circles=circles.filter(c=>c.id!==id);updateList();drawAll();}
@@ -836,13 +909,17 @@
     if(!imgObj||!origBlob){alert('請先載入圖片');return;}
     if(!ensureToken())return;
     closeAdj();
+    
     const btn=$('btnSave');btn.disabled=true;btn.textContent='⏳ 上傳中…';
     try{
       await upP;
       if(!cur){await uploadOrig();}            // 自動上傳失敗或載入的是標記圖時，補傳原圖
       if(!cur)throw new Error('原圖尚未上傳');
       const cv=$('mainCanvas');
+      const restore=canvasAtScale1();
       const marked=await new Promise(r=>cv.toBlob(r,'image/jpeg',0.95));
+      restore();
+
       const json=new Blob([JSON.stringify({
         version:1,prefix:namePrefix,w:cv.width,h:cv.height,
         angles:angles.map(a=>({id:a.id,color:a.color,pts:a.pts,deg:a.deg,showSupp:a.showSupp})),
@@ -989,7 +1066,14 @@
   }
 
   function dlOrig(){if(!origBlob)return;const a=document.createElement('a');a.href=URL.createObjectURL(origBlob);a.download='orig_'+Date.now()+'.jpg';a.click();}
-  function dlMark(){const cv=$('mainCanvas');const a=document.createElement('a');a.href=cv.toDataURL('image/jpeg',0.95);a.download='marked_'+Date.now()+'.jpg';a.click();}
+  function dlMark(){
+    const cv=$('mainCanvas');
+    const restore=canvasAtScale1();
+    const url=cv.toDataURL('image/jpeg',0.95);
+    restore();
+    const a=document.createElement('a');a.href=url;a.download='marked_'+Date.now()+'.jpg';a.click();
+  }
+  initSet();
 
   </script>
   </body>
