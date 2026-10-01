@@ -86,9 +86,35 @@
       #btnSnap{width:60px;height:60px;border-radius:50%;background:#fff;border:4px solid #38bdf8;cursor:pointer;font-size:1.4rem;}
       .csb{background:#334155;color:#fff;border:none;padding:8px 13px;border-radius:7px;font-size:0.8rem;cursor:pointer;}
       #galleryInput,#camFB{display:none;}
+
+      #side{position:fixed;top:0;left:0;bottom:0;width:86vw;max-width:360px;background:#0f172a;border-right:1px solid #334155;z-index:90;transform:translateX(-100%);transition:transform .2s;display:flex;flex-direction:column;}
+      #side.on{transform:none;}
+      #side-head{padding:8px 10px;background:#1e293b;display:flex;gap:5px;align-items:center;flex-wrap:wrap;}
+      #side-body{flex:1;overflow-y:auto;padding:6px;}
+      .dgroup{font-size:.72rem;color:#38bdf8;padding:8px 4px 4px;font-weight:700;}
+      .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;}
+      .card{background:#1e293b;border-radius:8px;overflow:hidden;position:relative;cursor:pointer;}
+      .card img{width:100%;aspect-ratio:1;object-fit:cover;display:block;background:#0a0f1e;}
+      .card .nm{font-size:.58rem;padding:3px 4px;color:#94a3b8;word-break:break-all;line-height:1.2;}
+      .card .bd{font-size:.55rem;color:#64748b;padding:0 4px 3px;}
+      .card .del{position:absolute;top:2px;right:2px;background:#000a;border:none;color:#ef4444;border-radius:4px;padding:2px 5px;font-size:.75rem;}
+      #name-bar{flex-shrink:0;background:#0f172a;padding:3px 10px;font-size:.78rem;color:#e2e8f0;border-bottom:1px solid #334155;display:flex;gap:8px;align-items:center;}
+      #name-txt{color:#facc15;font-weight:700;cursor:pointer;user-select:none;}
+      #modal{display:none;position:fixed;inset:0;background:#000b;z-index:200;align-items:center;justify-content:center;}
+      #modal.on{display:flex;}
+      #modal-body{background:#1e293b;border-radius:12px;padding:16px;width:86vw;max-width:340px;font-size:.85rem;}
+      #modal-body label{display:block;padding:6px 0;}
+      #modal-body .btn{margin:6px 4px 0 0;}
+      #res-title{cursor:pointer;user-select:none;display:flex;justify-content:space-between;}
+      #res-wrap.min #res-list{display:none;}
+      #res-wrap.min #res-arrow{transform:rotate(-90deg);}
+      #res-arrow{transition:transform .15s;}
+
+
     </style>
   </head>
   <body>
+  <button class="btn b-gray" onclick="toggleSide()">☰</button>
 
   <div id="topbar">
     <h1>📐 量角度</h1>
@@ -102,6 +128,10 @@
     <button class="tb on" id="tb-pt"  onclick="setTool('pt')">📍 打點取角</button>
     <button class="tb"    id="tb-cir" onclick="setTool('cir')">⭕ 標三圓取角</button>
   </div>
+
+  <div id="name-bar">📝 檔名前綴：<span id="name-txt" ondblclick="renamePrefix()">（未命名）</span>
+  <button class="bsm bsa" onclick="renamePrefix()">✏</button></div>
+
 
   <div id="hint">📷 請先拍照或選取圖片</div>
 
@@ -146,10 +176,14 @@
       <button id="adj-done" onclick="closeAdj()">✅ 完成</button>
     </div>
     <div id="res-wrap" style="display:none">
-      <div id="res-title">📋 量測結果</div>
+      <div id="res-title" onclick="$('res-wrap').classList.toggle('min')">
+        <span>📋 量測結果</span><span id="res-arrow">▼</span>
+      </div>
+
       <div id="res-list"></div>
     </div>
     <div id="dl-bar">
+      <button class="btn b-ind" id="btnSave" onclick="saveAll()">☁ 存到 GitHub</button>
       <button class="btn b-gray" onclick="dlOrig()">⬇ 原圖</button>
       <button class="btn b-grn"  onclick="dlMark()">⬇ 標記圖</button>
     </div>
@@ -167,8 +201,70 @@
   <input type="file" id="galleryInput" accept="image/*">
   <input type="file" id="camFB" accept="image/*" capture="environment">
 
+  <div id="side">
+    <div id="side-head">
+      <b style="color:#38bdf8;flex:1">☁ 雲端照片</b>
+      <button class="btn b-gray" id="btnAll" onclick="toggleAll()">展開全部</button>
+      <button class="btn b-gray" onclick="loadList()">🔄</button>
+      <button class="btn b-gray" onclick="toggleSide()">✕</button>
+    </div>
+    <div id="side-body"></div>
+    <div id="pager" style="padding:6px;display:flex;justify-content:center;gap:8px;background:#1e293b"></div>
+  </div>
+  <div id="modal"><div id="modal-body"></div></div>
+
+
   <script>
   const $=id=>document.getElementById(id);
+  const REPO='patrickwoolf/my-online-drive', BRANCH='main', DIR='assets/angle-measure';
+  let namePrefix='';          // 存檔用的檔名前綴
+  const TOKEN=()=>localStorage.getItem('gh_token')||'';
+  const ghHeaders=raw=>({'Authorization':`token ${TOKEN()}`,'Accept':raw?'application/vnd.github.raw':'application/vnd.github.v3+json'});
+  const apiUrl=p=>`https://api.github.com/repos/${REPO}/contents/${p.split('/').map(encodeURIComponent).join('/')}`;
+
+  function ensureToken(){
+    if(TOKEN())return true;
+    const t=prompt('找不到 GitHub Token，請輸入：');
+    if(t){localStorage.setItem('gh_token',t.trim());return true;}
+    return false;
+  }
+  const blobToB64=b=>new Promise((ok,ng)=>{const r=new FileReader();r.onload=()=>ok(r.result.split(',')[1]);r.onerror=ng;r.readAsDataURL(b);});
+
+  function tsNow(d=new Date()){
+    const p=n=>String(n).padStart(2,'0');
+    return d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+p(d.getHours())+p(d.getMinutes())+p(d.getSeconds());
+  }
+
+  async function ghPut(name,blob){
+    const url=apiUrl(`${DIR}/${name}`);
+    let sha;
+    const g=await fetch(url+`?ref=${BRANCH}&t=${Date.now()}`,{headers:ghHeaders()});
+    if(g.ok)sha=(await g.json()).sha;
+    const res=await fetch(url,{method:'PUT',headers:ghHeaders(),
+      body:JSON.stringify({message:`add ${name}`,content:await blobToB64(blob),branch:BRANCH,sha})});
+    if(!res.ok)throw new Error(name+' → '+res.status);
+    return (await res.json()).content.sha;
+  }
+  async function ghDeleteIfExists(name){
+    const url=apiUrl(`${DIR}/${name}`);
+    const g=await fetch(url+`?ref=${BRANCH}&t=${Date.now()}`,{headers:ghHeaders()});
+    if(g.ok)await ghDelete(name,(await g.json()).sha);
+  }
+
+
+  async function ghDelete(name,sha){
+    const res=await fetch(apiUrl(`${DIR}/${name}`),{method:'DELETE',headers:ghHeaders(),
+      body:JSON.stringify({message:`delete ${name}`,sha,branch:BRANCH})});
+    if(!res.ok)throw new Error(name+' → '+res.status);
+  }
+  async function ghGetBlob(name){
+    const res=await fetch(apiUrl(`${DIR}/${name}`)+`?ref=${BRANCH}&t=${Date.now()}`,{headers:ghHeaders(true)});
+    if(!res.ok)throw new Error(name+' → '+res.status);
+    return res.blob();
+  }
+  function openModal(html){$('modal-body').innerHTML=html;$('modal').classList.add('on');}
+  function closeModal(){$('modal').classList.remove('on');}
+
   const ACOLS=['#ef4444','#22c55e','#3b82f6','#f59e0b','#a855f7','#ec4899','#f97316','#84cc16'];
   const CCOLS=['#14b8a6','#06b6d4','#8b5cf6','#f43f5e','#f59e0b','#84cc16'];
 
@@ -252,6 +348,15 @@
 
   // ── 雙指縮放 ──
   const wrap=$('canvas-wrap');
+
+  wrap.addEventListener('wheel',e=>{
+    if(!imgObj)return;
+    e.preventDefault();
+    const r=wrap.getBoundingClientRect();
+    const f=e.deltaY<0?1.1:1/1.1;
+    zoomAround(Math.max(0.05,scale*f),e.clientX-r.left,e.clientY-r.top);
+  },{passive:false});
+
   wrap.addEventListener('touchstart',e=>{
     if(e.touches.length===2){
       e.preventDefault();
@@ -321,14 +426,14 @@
   function flipCam(){camFace=camFace==='environment'?'user':'environment';openCam();}
   function snap(){
     const v=$('video'),c=document.createElement('canvas');
+    
     c.width=v.videoWidth;c.height=v.videoHeight;
     c.getContext('2d').drawImage(v,0,0);
-    c.toBlob(b=>{origBlob=b;loadBlob(b);closeCam();},'image/jpeg',0.92);
+    c.toBlob(b=>{origBlob=b;newPhoto();loadBlob(b);closeCam();},'image/jpeg',0.92);
   }
-  $('galleryInput').addEventListener('change',e=>{const f=e.target.files[0];if(!f)return;origBlob=f;loadBlob(f);e.target.value='';});
-  $('camFB').addEventListener('change',e=>{const f=e.target.files[0];if(!f)return;origBlob=f;loadBlob(f);e.target.value='';});
-
-  function loadBlob(blob){
+  $('galleryInput').addEventListener('change',e=>{const f=e.target.files[0];if(!f)return;origBlob=f;newPhoto();loadBlob(f);e.target.value='';});
+  $('camFB').addEventListener('change',e=>{const f=e.target.files[0];if(!f)return;origBlob=f;newPhoto();loadBlob(f);e.target.value='';});
+  function loadBlob(blob,state){
     const url=URL.createObjectURL(blob);
     imgObj=new Image();
     imgObj.onload=()=>{
@@ -338,6 +443,7 @@
       $('zoom-bar').classList.add('show');
       $('dl-bar').classList.add('on');
       wip=[];wipCircles=[];angles=[];circles=[];aIdx=0;cIdx=0;
+      if(state){angles=state.angles||[];circles=state.circles||[];aIdx=angles.length;cIdx=circles.length;}
       closeAdj();updateList();
       zoomFit();   // 載入後自動 fit
       drawAll();updateHint();
@@ -358,6 +464,8 @@
 
   // Canvas 點擊（透過 wrap 的 click，但只在非平移時觸發）
   $('mainCanvas').addEventListener('click',e=>{
+    if(suppressClick){suppressClick=false;return;}
+
     if(!imgObj||adj)return;
     if(panStart&&panStart.moved){panStart=null;return;} // 剛平移完，忽略
     const{x,y}=cxy(e);
@@ -369,9 +477,10 @@
       wip.push(snap||{x,y});
       $('btnUndo').disabled=false;
       if(wip.length===3){
-        commitAngle(wip[0],wip[1],wip[2]);
+        commitAngle(wip[1],wip[0],wip[2]);   // 頂點=第②點，B=第①點，C=第③點
         wip=[];$('btnUndo').disabled=true;
       }
+
     } else {
       wip.push({x,y});
       $('btnUndo').disabled=false;
@@ -385,9 +494,11 @@
         wip=[];updateList();
         if(wipCircles.length===3){
           const[c1,c2,c3]=wipCircles;
-          commitAngle(c1.center,c2.center,c3.center,c1.id,c2.id,c3.id);
+          // 頂點=O2，B=O1，C=O3
+          commitAngle(c2.center,c1.center,c3.center,c2.id,c1.id,c3.id);
           wipCircles=[];$('btnUndo').disabled=true;
         }
+
       }
     }
     drawAll();updateHint();
@@ -412,6 +523,39 @@
 
   // 拖曳（單指，在 canvas 上）
   let drag=null;
+  // 滑鼠：拖點 / 拖空白處平移
+  let mdrag=null, mpan=null, mmoved=false, suppressClick=false;
+  $('mainCanvas').addEventListener('mousedown',e=>{
+    if(!imgObj||e.button!==0)return;
+    const{x,y}=cxy(e);
+    const hit=findHit(x,y);
+    mmoved=false;
+    if(hit){mdrag=hit;}
+    else{mpan={sx:e.clientX,sy:e.clientY,ox,oy};}
+    e.preventDefault();
+  });
+  window.addEventListener('mousemove',e=>{
+    if(mdrag){
+      mmoved=true;
+      const{x,y}=cxy(e);
+      applyDrag(mdrag,x,y);drawAll();
+    }else if(mpan){
+      const dx=e.clientX-mpan.sx, dy=e.clientY-mpan.sy;
+      if(!mmoved&&Math.hypot(dx,dy)<4)return;   // 小於 4px 視為點擊
+      mmoved=true;
+      ox=mpan.ox+dx;oy=mpan.oy+dy;applyT();
+      $('mainCanvas').style.cursor='grabbing';
+    }
+  });
+  window.addEventListener('mouseup',()=>{
+    if(!mdrag&&!mpan)return;
+    suppressClick=mmoved;          // 有拖動就不觸發 click（不會誤打點）
+    if(mdrag)updateList();
+    mdrag=null;mpan=null;
+    $('mainCanvas').style.cursor='';
+    setTimeout(()=>suppressClick=false,0);
+  });
+
   $('mainCanvas').addEventListener('touchstart',e=>{
     if(!imgObj||e.touches.length!==1)return;
     const{x,y}=cxy(e.touches[0]);
@@ -469,7 +613,7 @@
   function openAdj(hit){adj=hit;$('adj-panel').classList.add('on');renderPS();updateAdjLbl();drawAll();}
   function renderPS(){
     const row=$('ps-row');row.innerHTML='';
-    const labels={angle:['頂點','B點','C點'],circle:['端點①','端點②'],wip:wip.map((_,i)=>['頂','B','C'][i])}[adj.kind]||[];
+    const labels={angle:['頂點','B點','C點'],circle:['端點①','端點②'],wip:wip.map((_,i)=>['①','②頂','③'][i])}[adj.kind]||[];
     labels.forEach((l,pi)=>{
       const b=document.createElement('button');
       b.className='ps-btn'+(adj.pi===pi?' on':'');b.textContent=l;
@@ -479,7 +623,7 @@
     $('adj-title').textContent='微調：'+({angle:`角度${adj.idx+1}`,circle:`圓${adj.idx+1}`,wip:'進行中'}[adj.kind]||'');
   }
   function updateAdjLbl(){
-    $('adj-lbl').textContent=({angle:['頂','B','C'],circle:['①','②'],wip:['頂','B','C']}[adj.kind]||[])[adj.pi]||'●';
+    $('adj-lbl').textContent=({angle:['頂','B','C'],circle:['①','②'],wip:['①','②頂','③']}[adj.kind]||[])[adj.pi]||'●';
   }
   function closeAdj(){adj=null;$('adj-panel').classList.remove('on');updateList();drawAll();}
 
@@ -530,8 +674,7 @@
         ctx.beginPath();ctx.moveTo(wip[0].x,wip[0].y);ctx.lineTo(wip[1].x,wip[1].y);
         ctx.strokeStyle=col;ctx.lineWidth=2;ctx.setLineDash([6,4]);ctx.stroke();ctx.setLineDash([]);
       }
-      ['頂','B','C'].forEach((l,i)=>{if(wip[i])drawDot(ctx,wip[i],col,R,l);});
-    }
+      ['①','②頂','③'].forEach((l,i)=>{if(wip[i])drawDot(ctx,wip[i],col,R,l);});    }
     if(adj){
       let p=null;
       if(adj.kind==='angle')p=angles[adj.idx]?.pts[adj.pi];
@@ -608,12 +751,12 @@
       const n=wipCircles.length,h=wip.length;
       const msgs=[
         '⭕ 標圓1：點直徑 <b>端點①</b>','⭕ 標圓1：點直徑 <b>端點②</b>',
-        '⭕ 標圓2：點直徑 <b>端點①</b>','⭕ 標圓2：點直徑 <b>端點②</b>',
+        '⭕ 標圓2：點直徑 <b>端點①</b>（此圓為頂點）','⭕ 標圓2：點直徑 <b>端點②</b>（此圓為頂點）',
         '⭕ 標圓3：點直徑 <b>端點①</b>（完成後自動取角）','⭕ 標圓3：點直徑 <b>端點②</b>（完成後自動取角）'
       ];
       $('hint').innerHTML=msgs[n*2+h]||msgs[0];
     } else {
-      const m=['📍 點 <b>①頂點</b>（靠近圓心自動吸附）','📍 點 <b>②邊上一點</b>','📍 點 <b>③另一邊上一點</b>'];
+      const m=['📍 點 <b>①第一點</b>','📍 點 <b>②頂點</b>（靠近圓心自動吸附）','📍 點 <b>③第三點</b>'];
       $('hint').innerHTML=m[wip.length]||m[0];
     }
   }
@@ -666,8 +809,188 @@
     angles=[];circles=[];wip=[];wipCircles=[];aIdx=0;cIdx=0;
     $('btnUndo').disabled=true;closeAdj();updateList();drawAll();updateHint();
   }
+
+  let cur=null;                 // 目前這張在雲端的狀態 {ts,prefix,ext,sha}
+  let upP=Promise.resolve();    // 自動上傳的 Promise，存檔前會等它完成
+  const nameOf=(p,ts)=>(p?p+'_':'')+ts;
+
+  function newPhoto(){          // 拍照 / 相簿選圖後呼叫
+    namePrefix='';showName();cur=null;
+    upP=uploadOrig();
+  }
+  async function uploadOrig(){
+    const mine=origBlob;
+    if(!mine||!ensureToken())return;
+    const ts=tsNow(), ext=mine.type==='image/png'?'png':'jpg';
+    $('hint').textContent='☁ 原圖自動上傳中…';
+    try{
+      const sha=await ghPut(`${nameOf(namePrefix,ts)}_orig.${ext}`,mine);
+      if(origBlob===mine){cur={ts,prefix:namePrefix,ext,sha};updateHint();}
+      if($('side').classList.contains('on'))loadList();
+    }catch(e){
+      cur=null;$('hint').textContent='⚠ 原圖自動上傳失敗，可按「存到 GitHub」重試';
+    }
+  }
+
+  async function saveAll(){
+    if(!imgObj||!origBlob){alert('請先載入圖片');return;}
+    if(!ensureToken())return;
+    closeAdj();
+    const btn=$('btnSave');btn.disabled=true;btn.textContent='⏳ 上傳中…';
+    try{
+      await upP;
+      if(!cur){await uploadOrig();}            // 自動上傳失敗或載入的是標記圖時，補傳原圖
+      if(!cur)throw new Error('原圖尚未上傳');
+      const cv=$('mainCanvas');
+      const marked=await new Promise(r=>cv.toBlob(r,'image/jpeg',0.95));
+      const json=new Blob([JSON.stringify({
+        version:1,prefix:namePrefix,w:cv.width,h:cv.height,
+        angles:angles.map(a=>({id:a.id,color:a.color,pts:a.pts,deg:a.deg,showSupp:a.showSupp})),
+        circles
+      },null,1)],{type:'application/json'});
+
+      const oldBase=nameOf(cur.prefix,cur.ts), newBase=nameOf(namePrefix,cur.ts);
+      if(oldBase!==newBase){                   // 前綴有改：搬移原圖
+        cur.sha=await ghPut(`${newBase}_orig.${cur.ext}`,origBlob);
+        await ghDeleteIfExists(`${oldBase}_orig.${cur.ext}`);
+        await ghDeleteIfExists(`${oldBase}_marked.jpg`);
+        await ghDeleteIfExists(`${oldBase}.json`);
+        cur.prefix=namePrefix;
+      }
+      await ghPut(`${newBase}_marked.jpg`,marked);
+      await ghPut(`${newBase}.json`,json);
+      alert('✅ 已存到 GitHub：\n'+newBase);
+      if($('side').classList.contains('on'))loadList();
+    }catch(e){alert('❌ 存檔失敗：'+e.message);}
+    btn.disabled=false;btn.textContent='☁ 存到 GitHub';
+  }
+
+
+  let allSets=[], showAll=false, page=0;
+  const PAGE=12, thumbCache=new Map();
+
+  function toggleSide(){
+    const s=$('side');s.classList.toggle('on');
+    if(s.classList.contains('on'))loadList();
+  }
+  function toggleAll(){showAll=!showAll;page=0;$('btnAll').textContent=showAll?'只看一個月':'展開全部';renderList();}
+
+  async function loadList(){
+    if(!ensureToken())return;
+    $('side-body').innerHTML='<p style="padding:10px;color:#64748b">載入中…</p>';
+    const res=await fetch(apiUrl(DIR)+`?ref=${BRANCH}&t=${Date.now()}`,{headers:ghHeaders()});
+    if(res.status===404){allSets=[];renderList();return;}
+    if(!res.ok){$('side-body').textContent='讀取失敗 '+res.status;return;}
+    const files=await res.json(), m={};
+    files.forEach(f=>{
+      const r=f.name.match(/^(.*)(\d{14})(?:_(orig|marked)\.(?:jpg|jpeg|png)|(\.json))$/);
+      if(!r)return;
+      const key=r[1]+r[2], kind=r[3]||'json';
+      (m[key]=m[key]||{key,prefix:r[1].replace(/_$/,''),ts:r[2],files:{}}).files[kind]={name:f.name,sha:f.sha};
+    });
+    allSets=Object.values(m).sort((a,b)=>b.ts.localeCompare(a.ts));
+    page=0;renderList();
+  }
+
+  function renderList(){
+    const cutoff=tsNow(new Date(Date.now()-30*864e5));
+    const sets=showAll?allSets:allSets.filter(s=>s.ts>=cutoff);
+    const pages=Math.max(1,Math.ceil(sets.length/PAGE));
+    if(page>=pages)page=pages-1;
+    const cur=sets.slice(page*PAGE,(page+1)*PAGE);
+    const body=$('side-body');body.innerHTML='';
+    if(!cur.length)body.innerHTML='<p style="padding:10px;color:#64748b">沒有照片</p>';
+    let lastDate='',grid=null;
+    const io=new IntersectionObserver(es=>es.forEach(en=>{
+      if(!en.isIntersecting)return;io.unobserve(en.target);loadThumb(en.target);
+    }),{root:body});
+    cur.forEach(s=>{
+      const d=`${s.ts.slice(0,4)}-${s.ts.slice(4,6)}-${s.ts.slice(6,8)}`;
+      if(d!==lastDate){
+        lastDate=d;
+        const h=document.createElement('div');h.className='dgroup';h.textContent='📅 '+d;body.appendChild(h);
+        grid=document.createElement('div');grid.className='grid';body.appendChild(grid);
+      }
+      const f=s.files.orig||s.files.marked;
+      const c=document.createElement('div');c.className='card';
+      c.innerHTML=`<img data-name="${f?f.name:''}">
+        <div class="nm">${s.prefix?s.prefix+' ':''}${s.ts.slice(8,10)}:${s.ts.slice(10,12)}:${s.ts.slice(12)}</div>
+        <div class="bd">${s.files.orig?'原':'－'} ${s.files.marked?'標':'－'} ${s.files.json?'J':'－'}</div>
+        <button class="del">🗑</button>`;
+      c.onclick=()=>openChoice(s);
+      c.querySelector('.del').onclick=e=>{e.stopPropagation();openDelete(s);};
+      grid.appendChild(c);
+      io.observe(c.querySelector('img'));
+    });
+    const pg=$('pager');
+    pg.innerHTML=pages>1?`<button class="btn b-gray" ${page?'':'disabled'} onclick="page--;renderList()">◀</button>
+      <span style="font-size:.76rem;padding:6px">${page+1} / ${pages}</span>
+      <button class="btn b-gray" ${page<pages-1?'':'disabled'} onclick="page++;renderList()">▶</button>`:'';
+  }
+
+  async function loadThumb(img){
+    const name=img.dataset.name;if(!name)return;
+    try{
+      if(!thumbCache.has(name))thumbCache.set(name,URL.createObjectURL(await ghGetBlob(name)));
+      img.src=thumbCache.get(name);
+    }catch(e){}
+  }
+
+  function openChoice(s){
+    openModal(`<div style="margin-bottom:8px"><b>${s.prefix||s.ts}</b></div>
+      <button class="btn b-blue" ${s.files.orig?'':'disabled'} onclick="loadSet('${s.key}','orig')">載入原始圖${s.files.json?'（還原點位）':''}</button>
+      <button class="btn b-grn"  ${s.files.marked?'':'disabled'} onclick="loadSet('${s.key}','marked')">載入標記圖</button>
+      <button class="btn b-gray" onclick="closeModal()">取消</button>`);
+  }
+  async function loadSet(key,kind){
+    const s=allSets.find(x=>x.key===key);if(!s)return;
+    closeModal();$('hint').textContent='⏳ 載入中…';
+    try{
+      const blob=await ghGetBlob(s.files[kind].name);
+      let state=null;
+      if(kind==='orig'&&s.files.json){
+        try{state=JSON.parse(await (await ghGetBlob(s.files.json.name)).text());}catch(e){}
+      }
+      origBlob=blob;
+      namePrefix=s.prefix;showName();
+      cur=(kind==='orig')
+        ?{ts:s.ts,prefix:s.prefix,ext:s.files.orig.name.split('.').pop(),sha:s.files.orig.sha}
+        :null;                       // 載入標記圖時，存檔會當作新的一組
+      upP=Promise.resolve();
+
+      loadBlob(blob,state);
+      toggleSide();
+    }catch(e){alert('載入失敗：'+e.message);updateHint();}
+  }
+
+  function openDelete(s){
+    const f=s.files,row=(k,t)=>f[k]?`<label><input type="checkbox" value="${k}"> ${t}</label>`:'';
+    openModal(`<b>刪除 ${s.prefix||s.ts}</b>
+      ${row('orig','原始圖')}${row('marked','標記圖')}${row('json','JSON 點位')}
+      <button class="btn b-red" onclick="doDelete('${s.key}')">刪除勾選項目</button>
+      <button class="btn b-gray" onclick="closeModal()">取消</button>`);
+  }
+  async function doDelete(key){
+    const s=allSets.find(x=>x.key===key);
+    const kinds=[...document.querySelectorAll('#modal-body input:checked')].map(i=>i.value);
+    if(!kinds.length){alert('請至少勾選一項');return;}
+    if(!confirm('確定刪除？無法復原'))return;
+    try{for(const k of kinds)await ghDelete(s.files[k].name,s.files[k].sha);}
+    catch(e){alert('刪除失敗：'+e.message);}
+    closeModal();loadList();
+  }
+
+  function showName(){$('name-txt').textContent=namePrefix||'（未命名）';}
+  function renamePrefix(){
+    const v=prompt('存檔用的檔名前綴（可留空）：',namePrefix);
+    if(v===null)return;
+    namePrefix=v.trim().replace(/[\\/:*?"<>|#%\s]+/g,'_').replace(/^_+|_+$/g,'');
+    showName();
+  }
+
   function dlOrig(){if(!origBlob)return;const a=document.createElement('a');a.href=URL.createObjectURL(origBlob);a.download='orig_'+Date.now()+'.jpg';a.click();}
   function dlMark(){const cv=$('mainCanvas');const a=document.createElement('a');a.href=cv.toDataURL('image/jpeg',0.95);a.download='marked_'+Date.now()+'.jpg';a.click();}
+
   </script>
   </body>
   </html>
