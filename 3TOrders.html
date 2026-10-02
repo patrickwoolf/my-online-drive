@@ -168,6 +168,324 @@ const TIP_CONTENT={
     <div class="tip-sub">創傷</div>
     <span class="tip-code">S06.2-S06.9</span> 顱內損傷<br>
     <span class="tip-code">S12.0-S12.6</span> 頸椎骨折　<span class="tip-code">S22.0/S32.0</span> 胸腰椎骨折<br>
-    <span class="tip-code">S14.1/S24.1/S34.1</span
+    <span class="tip-code">S14.1/S24.1/S34.1</span> 脊髓損傷
+    <div class="tip-limit">⏱ 限住院期間及出院後 6 個月內</div>`,
+  'ot-surg':()=>`<div class="tip-title">📋 外科手術患者 適用 ICD-10-CM</div>
+    <div class="tip-sub">骨折</div><span class="tip-code">S62.3/S62.6</span> 手部/手指骨折
+    <div class="tip-sub">截肢</div><span class="tip-code">S68.0-S68.7</span> 拇指/手指/腕/手截肢
+    <div class="tip-sub">壓碎傷</div>
+    <span class="tip-code">S47</span> 肩及上臂　<span class="tip-code">S57.0/S57.8</span> 肘/前臂<br>
+    <span class="tip-code">S67.0-S67.9</span> 拇指/手指/腕手　<span class="tip-code">S77</span> 髖及大腿
+    <div class="tip-sub">神經損傷</div><span class="tip-code">S44</span> 上肢神經損傷
+    <div class="tip-sub">燒燙傷</div><span class="tip-code">T22-T25</span> 肩/上臂/腕/手掌/手指
+    <div class="tip-limit">⏱ 限手術後 3 個月內</div>`,
+  'st-adult':()=>`<div class="tip-title">📋 成人重大傷病 適用 ICD-10-CM</div>
+    <div class="tip-sub">惡性腫瘤</div>
+    <span class="tip-code">C00-C86, C88, C90-C96</span> 各類原發性惡性腫瘤<br>
+    <span class="tip-code">C4A, C7A, C7B</span> 梅克爾細胞癌/類癌/神經內分泌腫瘤<br>
+    <span class="tip-code">D03</span> 原位黑色素瘤　<span class="tip-code">D45</span> 真性紅血球增多症
+    <div class="tip-sub">腦血管疾病</div>
+    <span class="tip-code">I60-I69</span> 腦出血、腦梗塞、中風後遺症<br>
+    <span class="tip-code">G450-G468</span> 暫發性腦缺血發作
+    <div class="tip-sub">頭部創傷</div>
+    <span class="tip-code">S019</span> 頭部開放性傷口<br>
+    <span class="tip-code">S021-S024, S026-S029</span> 顱骨骨折<br>
+    <span class="tip-code">S060, S063-S066, S068-S069</span> 腦震盪、顱內出血
+    <div class="tip-sub">其他</div>
+    <span class="tip-code">J380</span> 聲帶癱瘓　<span class="tip-code">R49</span> 聲音障礙<br>
+    <span class="tip-code">J910</span> 肋膜積水　<span class="tip-code">R180</span> 腹水
+    <div class="tip-limit">⏱ 限住院期間及出院後 12 個月內</div>`,
+  'st-child':()=>`<div class="tip-title">📋 兒童發展障礙（≤12歲）適用 ICD-10-CM</div>
+    <div class="tip-sub">語言與發展障礙</div>
+    <span class="tip-code">F80-F82</span> 言語/語言發展障礙、特定運動功能發展障礙<br>
+    <span class="tip-code">F88/F89</span> 廣泛性發展障礙　<span class="tip-code">F840</span> 兒童自閉症
+    <div class="tip-sub">神經系統</div><span class="tip-code">G80</span> 腦性麻痺
+    <div class="tip-sub">精神/行為</div><span class="tip-code">F480</span> 精神官能性神經衰弱
+    <div class="tip-sub">聽力障礙</div>
+    <span class="tip-code">H90-H91</span> 感音神經性及傳導性聽力損失<br>
+    <span class="tip-code">H9325</span> 聽覺處理中樞障礙
+    <div class="tip-limit">👶 治療對象需為 12 歲以下兒童</div>`,
+};
+const tipEl=document.getElementById('globalTip');
+function showTip(icon){
+  const fn=TIP_CONTENT[icon.dataset.tip];if(!fn)return;
+  tipEl.innerHTML=fn();tipEl.classList.add('visible');
+  const rect=icon.getBoundingClientRect();
+  const sY=window.scrollY||document.documentElement.scrollTop;
+  const sX=window.scrollX||document.documentElement.scrollLeft;
+  const tipW=310,vw=window.innerWidth;
+  let left=rect.left+sX, top=rect.bottom+sY+6;
+  if(left+tipW>sX+vw-8) left=sX+vw-tipW-8;
+  if(left<8) left=8;
+  tipEl.style.left=left+'px'; tipEl.style.top=top+'px';
+}
+function hideTip(){tipEl.classList.remove('visible');}
+function bindTips(){
+  document.querySelectorAll('.tip-icon[data-tip]').forEach(icon=>{
+    icon.addEventListener('mouseenter',()=>showTip(icon));
+    icon.addEventListener('mouseleave',hideTip);
+    icon.addEventListener('click',e=>e.stopPropagation());
+  });
+}
+document.addEventListener('click',hideTip);
 
-Preview trimmed to first 10K characters
+// ══════ DATA ══════
+const PTS_ITEMS=[
+  {id:'PTS1',label:'PTS1 牽引'},{id:'PTS2',label:'PTS2 冷熱敷'},
+  {id:'PTS3',label:'PTS3 紅外線'},{id:'PTS4',label:'PTS4 石蠟浴'},
+  {id:'PTS5',label:'PTS5 超音波'},{id:'PTS6',label:'PTS6 短波'},
+  {id:'PTS7',label:'PTS7 微波'},{id:'PTS8',label:'PTS8 向量干擾'},
+  {id:'PTS9',label:'PTS9 TENS'},{id:'PTS10',label:'PTS10 超高頻'},
+  {id:'PTS11',label:'PTS11 低能雷射'},{id:'PTS12',label:'PTS12 紫外線'},
+  {id:'PTS13',label:'PTS13 磁場治療'},{id:'PTS14',label:'PTS14 循環治療'},
+  {id:'PTS15',label:'PTS15 其他核可'},
+];
+const PTM_ITEMS=[
+  {id:'PTM1',label:'PTM1 肌肉電刺激'},{id:'PTM2',label:'PTM2 上肢水療'},
+  {id:'PTM3',label:'PTM3 下肢水療'},{id:'PTM4',label:'PTM4 全身水療'},
+  {id:'PTM5',label:'PTM5 被動ROM'},{id:'PTM6',label:'PTM6 牽拉運動'},
+  {id:'PTM7',label:'PTM7 運動治療'},{id:'PTM8',label:'PTM8 傾斜台訓練'},
+  {id:'PTM9',label:'PTM9 肌力訓練'},{id:'PTM10',label:'PTM10 耐力訓練'},
+  {id:'PTM11',label:'PTM11 按摩'},{id:'PTM12',label:'PTM12 鬆動術'},
+  {id:'PTM13',label:'PTM13 姿態訓練'},{id:'PTM14',label:'PTM14 其他核可'},
+];
+const PTC_ITEMS=[
+  {id:'PTC1',label:'PTC1 促進技術'},{id:'PTC2',label:'PTC2 平衡訓練'},
+  {id:'PTC3',label:'PTC3 義肢訓練'},{id:'PTC4',label:'PTC4 等速肌力訓練'},
+  {id:'PTC5',label:'PTC5 心肺功能訓練'},{id:'PTC6',label:'PTC6 行走訓練'},
+  {id:'PTC7',label:'PTC7 其他核可'},
+];
+const OT_ITEMS=[
+  {id:'OT1',label:'OT1 姿態訓練',coreCNS:true,coreSurg:false},
+  {id:'OT2',label:'OT2 被動關節運動',coreCNS:false,coreSurg:true},
+  {id:'OT3',label:'OT3 坐站平衡',coreCNS:true,coreSurg:false},
+  {id:'OT4',label:'OT4 移位訓練',coreCNS:true,coreSurg:false},
+  {id:'OT5',label:'OT5 日常生活訓練',coreCNS:true,coreSurg:true},
+  {id:'OT6',label:'OT6 肌力訓練',coreCNS:false,coreSurg:true},
+  {id:'OT7',label:'OT7 運動知覺訓練',coreCNS:true,coreSurg:true},
+  {id:'OT8',label:'OT8 上下肢功能訓練',coreCNS:true,coreSurg:true},
+  {id:'OT9',label:'OT9 義肢功能訓練',coreCNS:true,coreSurg:true},
+  {id:'OT10',label:'OT10 手足功能訓練',coreCNS:true,coreSurg:true},
+  {id:'OT11',label:'OT11 協調訓練',coreCNS:true,coreSurg:true},
+  {id:'OT12',label:'OT12 知覺認知訓練',coreCNS:true,coreSurg:false},
+  {id:'OT13',label:'OT13 團體治療',coreCNS:false,coreSurg:false},
+  {id:'OT14',label:'OT14 娛樂治療',coreCNS:false,coreSurg:false},
+  {id:'OT15',label:'OT15 活動治療',coreCNS:false,coreSurg:false},
+  {id:'OT16',label:'OT16 減痙攣活動',coreCNS:false,coreSurg:false},
+  {id:'OT17',label:'OT17 其他核可',coreCNS:false,coreSurg:false},
+];
+const ST_ITEMS=[
+  {id:'ST1',label:'ST1 聽能理解訓練',core:true},{id:'ST2',label:'ST2 口語訓練',core:true},
+  {id:'ST3',label:'ST3 輔導溝通法',core:true},{id:'ST4',label:'ST4 認讀訓練',core:false},
+  {id:'ST5',label:'ST5 書寫訓練',core:false},{id:'ST6',label:'ST6 視知覺訓練',core:false},
+  {id:'ST7',label:'ST7 高階認知訓練',core:true},{id:'ST8',label:'ST8 觸覺肌動法',core:false},
+  {id:'ST9',label:'ST9 口腔動作訓練',core:true},{id:'ST10',label:'ST10 發音部位法',core:false},
+  {id:'ST11',label:'ST11 聽辨訓練',core:false},{id:'ST12',label:'ST12 節律訓練',core:false},
+  {id:'ST13',label:'ST13 視聽迴饋法',core:true},{id:'ST14',label:'ST14 語言分析',core:true},
+  {id:'ST15',label:'ST15 其他核可',core:false},
+];
+
+const CODES={
+  PT:{
+    pts_simple:   {hospital:'42002B',clinic_rehab:'42003C',clinic_general:'42003C'},
+    pts_moderate: {hospital:'42005B',clinic_rehab:'42006C',clinic_general:'42006C'},
+    ptm_moderate: {hospital:'42008B',clinic_rehab:'42017C',clinic_general:'42009C'},
+    ptm_complex:  {hospital:'42011B',clinic_rehab:'42018C',clinic_general:'42012C'},
+    muscle:       {hospital:'41003B',clinic_rehab:'41003B',clinic_general:'41003B'},
+    ptc:          {hospital:'42014B',clinic_rehab:'42019C',clinic_general:'42015C'},
+  },
+  OT:{
+    simple:   {hospital:'43002B',clinic_rehab:'43003C',clinic_general:'43003C'},
+    moderate: {hospital:'43005B',clinic_rehab:'43027C',clinic_general:'43006C'},
+    mod_comp: {hospital:'43008B',clinic_rehab:'43028C',clinic_general:'43009C'},
+    complex:  {hospital:'43030B',clinic_rehab:'43031C',clinic_general:'43032C'},
+  },
+  ST:{
+    simple:   {hospital:'44002B',clinic_rehab:'44003C',clinic_general:'44003C'},
+    moderate: {hospital:'44005B',clinic_rehab:'44011C',clinic_general:'44006C'},
+    mod_comp: {hospital:'44014B',clinic_rehab:'44015C',clinic_general:'44016C'},
+    complex:  {hospital:'44008B',clinic_rehab:'44012C',clinic_general:'44009C'},
+  },
+};
+
+const ALL_ITEMS=[...PTS_ITEMS,...PTM_ITEMS,...PTC_ITEMS,...OT_ITEMS,...ST_ITEMS];
+const sel={pts:new Set(),ptm:new Set(),ptc:new Set(),ot:new Set(),st:new Set()};
+let clinicType='hospital',otDiag='',stDiag='';
+let copyData=[];
+
+function setClinic(el,type){
+  clinicType=type;
+  document.querySelectorAll('.clinic-btn').forEach(b=>b.classList.remove('cl-active'));
+  el.classList.add('cl-active'); updateResult();
+}
+function toggleDiag(el,type){
+  const was=el.classList.contains('dg-active');
+  document.querySelectorAll('#content-ot .diag-btn').forEach(b=>b.classList.remove('dg-active'));
+  otDiag=was?'':type; if(!was)el.classList.add('dg-active'); updateResult();
+}
+function toggleDiagST(el,type){
+  const was=el.classList.contains('dg-active');
+  document.querySelectorAll('#content-st .diag-btn').forEach(b=>b.classList.remove('dg-active'));
+  stDiag=was?'':type; if(!was)el.classList.add('dg-active'); updateResult();
+}
+function renderPills(cid,items,group,ac){
+  const el=document.getElementById(cid); el.innerHTML='';
+  items.forEach(item=>{
+    const d=document.createElement('div');
+    d.className='pill'+(sel[group].has(item.id)?' '+ac:'');
+    d.textContent=item.label;
+    d.onclick=()=>{
+      if(sel[group].has(item.id)){sel[group].delete(item.id);d.classList.remove(ac);}
+      else{sel[group].add(item.id);d.classList.add(ac);}
+      updateResult();
+    };
+    el.appendChild(d);
+  });
+}
+function getLabel(id){const f=ALL_ITEMS.find(x=>x.id===id);return f?f.label:id;}
+
+// ══════ CLASSIFY PT：PTS 和 PTM 完全獨立，各自一行 ══════
+function classifyPT(){
+  const res=[], cl=clinicType;
+  const ptsList=[...sel.pts];
+  const ptmList=[...sel.ptm].filter(x=>x!=='PTM1');
+  const hasPTM1=sel.ptm.has('PTM1');
+
+  // ── PTS 行（不受 PTM 影響）──
+  if(ptsList.length>=2){
+    res.push({code:CODES.PT.pts_moderate[cl], name:'物理治療 簡單（中度）',
+      color:'c-pt', items:ptsList, ruleKey:'≥2項 PTS，合計 >30min', warn:null, info:null, coreIds:[]});
+  } else if(ptsList.length===1){
+    res.push({code:CODES.PT.pts_simple[cl], name:'物理治療 簡單',
+      color:'c-pt', items:ptsList, ruleKey:'1項 PTS', warn:null, info:null, coreIds:[]});
+  }
+
+  // ── PTM1 肌肉電刺激獨立行 ──
+  if(hasPTM1){
+    res.push({code:CODES.PT.muscle[cl], name:'肌肉電刺激',
+      color:'c-pt', items:['PTM1'], ruleKey:'獨立申報', warn:null, info:null, coreIds:[]});
+  }
+
+  // ── PTM 行（PTM1 除外）──
+  if(ptmList.length>=3){
+    res.push({code:CODES.PT.ptm_complex[cl], name:'物理治療 中度複雜',
+      color:'c-pt', items:ptmList, ruleKey:'≥3項 PTM，合計 >50min', warn:null, info:null, coreIds:[]});
+  } else if(ptmList.length>=1){
+    res.push({code:CODES.PT.ptm_moderate[cl], name:'物理治療 中度',
+      color:'c-pt', items:ptmList, ruleKey:'1-2項 PTM', warn:null, info:null, coreIds:[]});
+  }
+
+  // ── PTC 複雜 ──
+  if(sel.ptc.size>0){
+    res.push({code:CODES.PT.ptc[cl], name:'物理治療 複雜',
+      color:'c-ptc', items:[...sel.ptc], ruleKey:'復健專科醫師處方',
+      warn:null, info:'需復健專科醫師開立處方，治療師親自執行。', coreIds:[]});
+  }
+  return res;
+}
+
+function classifyOT(){
+  const count=sel.ot.size; if(count===0)return[];
+  const cl=clinicType;
+  const selItems=OT_ITEMS.filter(x=>sel.ot.has(x.id));
+  let coreIds=[];
+  if(otDiag==='cns'||otDiag==='child_cns') coreIds=selItems.filter(x=>x.coreCNS).map(x=>x.id);
+  if(otDiag==='surg') coreIds=selItems.filter(x=>x.coreSurg).map(x=>x.id);
+  const cc=coreIds.length;
+  let code,name,ruleKey,warn=null;
+  if(count<=1){code=CODES.OT.simple[cl];name='職能治療 簡單';ruleKey='1項 OT';}
+  else if(count<=2){code=CODES.OT.moderate[cl];name='職能治療 中度';ruleKey='2項 OT，30-50min';}
+  else{
+    if(otDiag==='child_cns'){code=CODES.OT.complex[cl];name='職能治療 複雜';ruleKey='≥3項，兒童中樞神經';}
+    else if((otDiag==='cns'||otDiag==='surg')&&cc>=2){code=CODES.OT.complex[cl];name='職能治療 複雜';ruleKey='≥3項，含≥2核心';}
+    else if((otDiag==='cns'||otDiag==='surg')&&cc<2){
+      code=CODES.OT.mod_comp[cl];name='職能治療 中度複雜';ruleKey='≥3項 OT';
+      warn='⚠️ 核心項目僅 '+cc+' 項（需≥2），無法申報複雜，改為中度複雜。';
+    } else {
+      code=CODES.OT.mod_comp[cl];name='職能治療 中度複雜';ruleKey='≥3項 OT';
+      if(!otDiag)warn='⚠️ 未選診斷類別，預設中度複雜。若符合中樞神經/外科手術可升級為複雜。';
+    }
+  }
+  return [{code,name,color:'c-ot',items:[...sel.ot],ruleKey,warn,info:null,coreIds}];
+}
+
+function classifyST(){
+  const count=sel.st.size; if(count===0)return[];
+  const cl=clinicType;
+  const selItems=ST_ITEMS.filter(x=>sel.st.has(x.id));
+  const coreIds=selItems.filter(x=>x.core).map(x=>x.id);
+  const cc=coreIds.length;
+  let code,name,ruleKey,warn=null;
+  if(count<=1){code=CODES.ST.simple[cl];name='語言治療 簡單';ruleKey='1項 ST';}
+  else if(count<=2){code=CODES.ST.moderate[cl];name='語言治療 中度';ruleKey='2項 ST，30-50min';}
+  else if(count<=3){
+    if(cc>=2){code=CODES.ST.mod_comp[cl];name='語言治療 中度複雜';ruleKey='3項，含≥2核心';}
+    else{code=CODES.ST.moderate[cl];name='語言治療 中度';ruleKey='3項';warn='⚠️ 核心項目僅 '+cc+' 項（需≥2），維持中度。';}
+  } else {
+    if((stDiag==='adult'||stDiag==='child')&&cc>=2){code=CODES.ST.complex[cl];name='語言治療 複雜';ruleKey='≥4項，含≥2核心，符合診斷';}
+    else if(cc>=2){code=CODES.ST.mod_comp[cl];name='語言治療 中度複雜';ruleKey='≥3項，含≥2核心';if(!stDiag)warn='⚠️ 未選診斷類別，無法申報複雜，改為中度複雜。';}
+    else{code=CODES.ST.mod_comp[cl];name='語言治療 中度複雜';ruleKey='≥3項';warn='⚠️ 核心項目僅 '+cc+' 項（需≥2），無法申報複雜。';}
+  }
+  return [{code,name,color:'c-st',items:[...sel.st],ruleKey,warn,info:null,coreIds}];
+}
+
+function updateResult(){
+  const box=document.getElementById('result-box');
+  const all=[...classifyPT(),...classifyOT(),...classifyST()];
+  copyData=all;
+  if(all.length===0){box.innerHTML='<div class="empty-msg">尚未選擇任何項目</div>';return;}
+  box.innerHTML=all.map(r=>{
+    const names=r.items.map(id=>getLabel(id)).join('、');
+    const ruleHtml=r.ruleKey?'<span class="rule-tag">'+r.ruleKey+'</span>':'';
+    const coreHtml=r.coreIds&&r.coreIds.length>0
+      ?'<br><span style="font-size:11px;color:#7f8c8d;">核心：</span>'+r.coreIds.map(id=>'<span class="core-tag">'+id+'</span>').join(''):'';
+    const warnHtml=r.warn?'<div class="warn">'+r.warn+'</div>':'';
+    const infoHtml=r.info?'<div class="info">ℹ️ '+r.info+'</div>':'';
+    return '<div class="result-row">'
+      +'<div class="rcode '+r.color+'">'+r.code+'</div>'
+      +'<div class="rdesc"><strong>'+r.name+'</strong>'+ruleHtml
+      +'<div class="ritems">'+names+coreHtml+'</div>'
+      +warnHtml+infoHtml+'</div></div>';
+  }).join('');
+}
+
+// 複製：只含 碼 + 名稱 + 細項
+function copyOrder(){
+  if(copyData.length===0){alert('尚未選擇任何項目');return;}
+  const text=copyData.map(r=>r.code+' '+r.name+'　'+r.items.map(id=>getLabel(id)).join('、')).join('\n');
+  const btn=document.getElementById('copyBtn');
+  navigator.clipboard.writeText(text).then(()=>{
+    btn.textContent='✅ 已複製';setTimeout(()=>btn.textContent='📄 複製',2000);
+  }).catch(()=>{
+    const ta=document.createElement('textarea');
+    ta.value=text;ta.style.cssText='position:fixed;opacity:0;';
+    document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);
+    btn.textContent='✅ 已複製';setTimeout(()=>btn.textContent='📄 複製',2000);
+  });
+}
+
+function switchTab(tab){
+  ['pt','ot','st'].forEach(t=>{
+    document.getElementById('content-'+t).classList.toggle('show',t===tab);
+    document.getElementById('tab-'+t).className='tab'+(t===tab?' t-'+tab:'');
+  });
+  hideTip();
+}
+function clearAll(){
+  ['pts','ptm','ptc','ot','st'].forEach(g=>sel[g].clear());
+  otDiag='';stDiag='';copyData=[];
+  document.querySelectorAll('.diag-btn').forEach(b=>b.classList.remove('dg-active'));
+  init();updateResult();
+}
+function init(){
+  renderPills('pts-pills',PTS_ITEMS,'pts','active-pts');
+  renderPills('ptm-pills',PTM_ITEMS,'ptm','active-ptm');
+  renderPills('ptc-pills',PTC_ITEMS,'ptc','active-ptc');
+  renderPills('ot-pills', OT_ITEMS, 'ot', 'active-ot');
+  renderPills('st-pills', ST_ITEMS, 'st', 'active-st');
+  bindTips();
+}
+init();
+</script>
+</body>
+</html>
