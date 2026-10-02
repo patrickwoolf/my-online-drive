@@ -234,7 +234,7 @@
 
   <script>
   let LWK=1;
-  const ANG_TXT_K=10.5;   // 角度文字離頂點的距離(以點半徑 R 為單位),越小越靠近
+  const ANG_UP_K=2.2;   // 文字離頂點的垂直距離(以文字高度為單位),越小越靠近
   const SET_DEF={dot:1,line:1,font:1};
   let SET=Object.assign({},SET_DEF,JSON.parse(localStorage.getItem('angle_set')||'{}'));
 
@@ -785,7 +785,7 @@
       ctx.lineTo(A.x,A.y);ctx.closePath();ctx.fillStyle='#f59e0b33';ctx.fill();
       const mid=(aE+aC)/2;
       const off=R*3+cv_base()*0.03*uiK().k*SET.font;
-      txt(ctx,degStr+'°',A.x+Math.cos(mid)*off,A.y+Math.sin(mid)*off,R,col);
+      angTxtAbove(ctx,degStr+'°',A,R,col);
     } else {
       [[A,B],[A,C]].forEach(([p1,p2])=>{
         ctx.beginPath();ctx.moveTo(p1.x,p1.y);ctx.lineTo(p2.x,p2.y);
@@ -797,9 +797,7 @@
       ctx.beginPath();ctx.arc(A.x,A.y,R*3,a1,a2,false);
       ctx.lineTo(A.x,A.y);ctx.closePath();ctx.fillStyle=col+'33';ctx.fill();
       const mid=(a1+a2)/2;
-      const off=R*ANG_TXT_K;
-      txt(ctx,degStr+'°',A.x+Math.cos(mid)*off,A.y+Math.sin(mid)*off,R,col);
-
+      angTxtAbove(ctx,degStr+'°',A,R,col);
     }
     pts.forEach(p=>drawDot(ctx,p,col,R,''));
   }
@@ -815,6 +813,15 @@
     ctx.strokeStyle='#000';ctx.lineWidth=3;ctx.strokeText(s,x,y);
     ctx.fillStyle=col;ctx.fillText(s,x,y);
   }
+  
+  function angTxtAbove(ctx,s,A,R,col){
+    const fs=Math.max(cv_base()*0.012*uiK().k*SET.font,1);   // 與 txt 相同的字高
+    ctx.textAlign='center';
+    ctx.textBaseline='alphabetic';
+    txt(ctx,s,A.x,A.y-R-fs*(ANG_UP_K-1)*0.5-fs*0.2,R,col);
+    ctx.textAlign='start';
+  }
+
   function cv_base(){const cv=$('mainCanvas');return Math.max(cv.width,cv.height);}
 
   function updateHint(){
