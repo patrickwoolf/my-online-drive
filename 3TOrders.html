@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>復健科醫囑開立系統</title>
+<style>
+  *{box-sizing:border-box;}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;max-width:740px;margin:10px auto;padding:0 14px;background:#f5f7fa;color:#333;font-size:15px;}
+  h1{font-size:19px;color:#2c3e50;margin-bottom:8px;}
+  .badge{display:inline-block;background:#2ecc71;color:white;font-size:11px;font-weight:bold;padding:2px 8px;border-radius:10px;vertical-align:middle;margin-left:6px;}
+  h2{font-size:15px;color:#2c3e50;margin:0 0 10px;}
+  .card{background:white;padding:14px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.07);margin-bottom:12px;}
+  .sec{font-weight:bold;font-size:12px;color:#7f8c8d;text-transform:uppercase;letter-spacing:.5px;margin:10px 0 6px;}
+  .sec:first-child{margin-top:0;}
+  .pill-group{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:4px;}
+  .pill{padding:5px 11px;border:1.5px solid #ccc;border-radius:20px;font-size:13px;cursor:pointer;background:white;color:#555;transition:all .15s;user-select:none;}
+  .pill:hover{border-color:#3498db;color:#2980b9;}
+  .active-pts{background:#16a085!important;color:white!important;border-color:#16a085!important;}
+  .active-ptm{background:#2980b9!important;color:white!important;border-color:#2980b9!important;}
+  .active-ptc{background:#c0392b!important;color:white!important;border-color:#c0392b!important;}
+  .active-ot{background:#8e44ad!important;color:white!important;border-color:#8e44ad!important;}
+  .active-st{background:#e67e22!important;color:white!important;border-color:#e67e22!important;}
+  .divider{border:none;border-top:1px dashed #ddd;margin:8px 0;}
+  .clinic-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;}
+  .clinic-btn{padding:5px 12px;border:1.5px solid #ccc;border-radius:6px;font-size:12.5px;cursor:pointer;background:white;color:#555;transition:all .15s;}
+  .clinic-btn:hover{border-color:#2c3e50;color:#2c3e50;}
+  .clinic-btn.cl-active{background:#2c3e50;color:white;border-color:#2c3e50;}
+  .diag-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;}
+  .diag-btn{padding:6px 14px;border:1.5px solid #ccc;border-radius:6px;font-size:13px;cursor:pointer;background:white;color:#555;transition:all .15s;}
+  .diag-btn:hover{border-color:#8e44ad;color:#8e44ad;}
+  .diag-btn.dg-active{background:#8e44ad;color:white;border-color:#8e44ad;}
+  .tabs{display:flex;gap:4px;margin-bottom:12px;}
+  .tab{flex:1;padding:9px;text-align:center;border:1.5px solid #ccc;border-radius:6px;cursor:pointer;font-size:13px;font-weight:bold;color:#666;background:white;transition:all .15s;}
+  .tab.t-pt{background:#2980b9;color:white;border-color:#2980b9;}
+  .tab.t-ot{background:#8e44ad;color:white;border-color:#8e44ad;}
+  .tab.t-st{background:#e67e22;color:white;border-color:#e67e22;}
+  .tab-content{display:none;}
+  .tab-content.show{display:block;}
+  .result-box{background:#f8f9fa;border:1.5px solid #dee2e6;border-radius:8px;padding:14px;min-height:60px;}
+  .result-row{display:flex;align-items:flex-start;gap:10px;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid #eee;}
+  .result-row:last-child{border-bottom:none;margin-bottom:0;padding-bottom:0;}
+  .rcode{font-weight:bold;font-size:13px;min-width:82px;padding:3px 6px;border-radius:4px;text-align:center;color:white;white-space:nowrap;}
+  .c-pt{background:#2980b9;}.c-ptc{background:#c0392b;}.c-ot{background:#8e44ad;}.c-st{background:#e67e22;}
+  .rdesc{font-size:13.5px;color:#2c3e50;flex:1;}
+  .ritems{font-size:12px;color:#7f8c8d;margin-top:3px;}
+  .rule-tag{display:inline-block;background:#eaf4fb;color:#1a5276;border:1px solid #aed6f1;border-radius:4px;font-size:11px;padding:1px 6px;margin-left:4px;font-weight:normal;}
+  .warn{background:#fff3cd;border:1px solid #ffc107;border-radius:6px;padding:7px 10px;font-size:12.5px;color:#856404;margin-top:6px;}
+  .info{background:#e8f4fd;border:1px solid #aed6f1;border-radius:6px;padding:7px 10px;font-size:12.5px;color:#1a5276;margin-top:6px;}
+  .empty-msg{color:#aaa;font-size:14px;text-align:center;padding:10px 0;}
+  .core-tag{display:inline-block;background:#d4efdf;color:#1e8449;border:1px solid #a9dfbf;border-radius:4px;font-size:11px;padding:1px 5px;margin:1px;}
+  .copy-btn{background:#27ae60;color:white;border:none;border-radius:6px;padding:6px 14px;font-size:13px;cursor:pointer;}
+  .copy-btn:hover{background:#1e8449;}
+  .clear-btn{background:#e74c3c;color:white;border:none;border-radius:6px;padding:6px 14px;font-size:13px;cursor:pointer;}
+  .clear-btn:hover{background:#c0392b;}
+  .label-sm{font-size:12px;color:#7f8c8d;margin-bottom:4px;font-weight:bold;}
+  .tip-icon{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;font-size:10px;font-weight:bold;cursor:pointer;margin-left:5px;vertical-align:middle;flex-shrink:0;background:#8e44ad;color:white;}
+  .tip-icon.st-icon{background:#e67e22;}
+  #globalTip{position:absolute;display:none;background:#1a252f;color:#ecf0f1;font-size:12px;border-radius:8px;padding:12px 14px;width:310px;z-index:9999;line-height:1.65;box-shadow:0 4px 20px rgba(0,0,0,0.45);pointer-events:none;}
+  #globalTip.visible{display:block;}
+  #globalTip .tip-title{font-weight:bold;color:#2ecc71;font-size:12.5px;margin-bottom:4px;}
+  #globalTip .tip-sub{font-weight:bold;color:#f39c12;margin-top:8px;margin-bottom:2px;font-size:12px;}
+  #globalTip .tip-limit{background:rgba(231,76,60,0.25);border-left:3px solid #e74c3c;padding:3px 7px;border-radius:3px;margin-top:6px;font-size:11.5px;color:#fadbd8;}
+  #globalTip .tip-code{color:#aed6f1;}
+</style>
+</head>
+<body>
+<h1>🏥 復健科醫囑開立 <span class="badge">v2.6</span></h1>
+
+<div class="card" style="padding:12px 14px;">
+  <div class="label-sm">🏢 院所類型（影響所有申報碼）</div>
+  <div class="clinic-row">
+    <div class="clinic-btn cl-active" onclick="setClinic(this,'hospital')">🏥 醫院（地區/區域/醫學中心）</div>
+    <div class="clinic-btn" onclick="setClinic(this,'clinic_rehab')">🏪 基層－復健專科所</div>
+    <div class="clinic-btn" onclick="setClinic(this,'clinic_general')">🏪 基層－一般</div>
+  </div>
+</div>
+
+<div class="tabs">
+  <div class="tab t-pt" id="tab-pt" onclick="switchTab('pt')">🦴 物理治療 PT</div>
+  <div class="tab" id="tab-ot" onclick="switchTab('ot')">🖐 職能治療 OT</div>
+  <div class="tab" id="tab-st" onclick="switchTab('st')">🗣 語言治療 ST</div>
+</div>
+
+<!-- PT -->
+<div class="tab-content show" id="content-pt">
+  <div class="card">
+    <div class="sec">PTS — 簡單治療（儀器）</div>
+    <div class="pill-group" id="pts-pills"></div>
+    <hr class="divider">
+    <div class="sec">PTM — 中度治療（徒手／運動）</div>
+    <div class="pill-group" id="ptm-pills"></div>
+    <hr class="divider">
+    <div class="sec" style="color:#c0392b;">PTC — 複雜治療 <span style="font-weight:normal;font-size:11px;color:#999;">（需復健專科醫師處方）</span></div>
+    <div class="pill-group" id="ptc-pills"></div>
+  </div>
+</div>
+
+<!-- OT -->
+<div class="tab-content" id="content-ot">
+  <div class="card">
+    <div class="label-sm">診斷類別</div>
+    <div class="diag-row">
+      <div class="diag-btn" onclick="toggleDiag(this,'cns')">
+        成人中樞神經系統疾患
+        <span class="tip-icon" data-tip="ot-cns">i</span>
+      </div>
+      <div class="diag-btn" onclick="toggleDiag(this,'child_cns')">兒童中樞神經（≤12歲）</div>
+      <div class="diag-btn" onclick="toggleDiag(this,'surg')">
+        外科手術患者
+        <span class="tip-icon" data-tip="ot-surg">i</span>
+      </div>
+      <div class="diag-btn" onclick="toggleDiag(this,'general')">一般骨科／肌肉骨骼</div>
+    </div>
+    <div class="sec">OT 項目</div>
+    <div class="pill-group" id="ot-pills"></div>
+  </div>
+</div>
+
+<!-- ST -->
+<div class="tab-content" id="content-st">
+  <div class="card">
+    <div class="label-sm">診斷類別</div>
+    <div class="diag-row">
+      <div class="diag-btn" onclick="toggleDiagST(this,'adult')">
+        成人重大傷病
+        <span class="tip-icon st-icon" data-tip="st-adult">i</span>
+      </div>
+      <div class="diag-btn" onclick="toggleDiagST(this,'child')">
+        兒童發展障礙（≤12歲）
+        <span class="tip-icon st-icon" data-tip="st-child">i</span>
+      </div>
+      <div class="diag-btn" onclick="toggleDiagST(this,'general')">一般</div>
+    </div>
+    <div class="sec">ST 項目</div>
+    <div class="pill-group" id="st-pills"></div>
+  </div>
+</div>
+
+<!-- RESULT -->
+<div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+    <h2 style="margin:0;">📋 自動歸類醫囑</h2>
+    <div style="display:flex;gap:6px;">
+      <button class="copy-btn" id="copyBtn" onclick="copyOrder()">📄 複製</button>
+      <button class="clear-btn" onclick="clearAll()">✕ 清除</button>
+    </div>
+  </div>
+  <div class="result-box" id="result-box">
+    <div class="empty-msg">尚未選擇任何項目</div>
+  </div>
+</div>
+
+<div id="globalTip"></div>
+
+<script>
+// ══════ TOOLTIP ══════
+const TIP_CONTENT={
+  'ot-cns':()=>`<div class="tip-title">📋 成人中樞神經系統疾患 適用 ICD-10-CM</div>
+    <div class="tip-sub">腫瘤</div><span class="tip-code">C71-C72</span> 腦部與中樞神經系統惡性腫瘤
+    <div class="tip-sub">神經系統疾病</div>
+    <span class="tip-code">G00-G09</span> 中樞神經發炎<br>
+    <span class="tip-code">G11</span> 遺傳性共濟失調　<span class="tip-code">G23</span> 神經系統變性<br>
+    <span class="tip-code">G35-G37</span> 多發性硬化症等脫髓鞘疾病<br>
+    <span class="tip-code">G54</span> 神經根炎　<span class="tip-code">G81</span> 偏癱　<span class="tip-code">G95</span> 脊髓病變
+    <div class="tip-sub">感染/免疫</div><span class="tip-code">A39</span> 流行性腦脊髓膜炎　<span class="tip-code">B20</span> HIV
+    <div class="tip-sub">腦血管疾病</div><span class="tip-code">I60-I67</span> 腦出血、腦梗塞、中風
+    <div class="tip-sub">創傷</div>
+    <span class="tip-code">S06.2-S06.9</span> 顱內損傷<br>
+    <span class="tip-code">S12.0-S12.6</span> 頸椎骨折　<span class="tip-code">S22.0/S32.0</span> 胸腰椎骨折<br>
+    <span class="tip-code">S14.1/S24.1/S34.1</span
+
+Preview trimmed to first 10K characters
