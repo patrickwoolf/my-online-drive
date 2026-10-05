@@ -22,30 +22,46 @@
   <button id="cp">複製</button>
   <button id="dl">下載 txt</button>
   <script>
-  const $=i=>document.getElementById(i);
+  const $=i=>document.getElementById(i),S=t=>$("s").textContent=t,
+  B="https://generativelanguage.googleapis.com";
   $("k").value=localStorage.k||"";
   $("go").onclick=async()=>{
    const f=$("f").files[0],key=$("k").value.trim();
-   if(!key||!f)return $("s").textContent="請輸入 API Key 並選擇檔案";
-   localStorage.k=key;
-   if(f.size>14e6)return $("s").textContent="檔案超過約 14MB,請先壓縮或分割";
-   $("go").disabled=true;$("s").textContent="上傳並轉錄中…";$("o").value="";
+   if(!key||!f)return S("請輸入 API Key 並選擇檔案");
+   localStorage.k=key;$("go").disabled=true;$("o").value="";
    try{
-    const b64=await new Promise(r=>{const x=new FileReader();x.onload=()=>r(x.result.split(",")[1]);x.readAsDataURL(f)});
     const mime=f.type||(/m4a$/i.test(f.name)?"audio/mp4":"audio/mpeg");
-    const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${$("m").value}:generateContent?key=${key}`,{
+    S("上傳中…(大檔請耐心等候)");
+    const st=await fetch(`${B}/upload/v1beta/files?key=${key}`,{method:"POST",headers:{
+     "X-Goog-Upload-Protocol":"resumable","X-Goog-Upload-Command":"start",
+     "X-Goog-Upload-Header-Content-Length":f.size,"X-Goog-Upload-Header-Content-Type":mime,
+     "Content-Type":"application/json"},body:JSON.stringify({file:{display_name:f.name}})});
+    const url=st.headers.get("x-goog-upload-url");
+    if(!url)throw new Error("無法取得上傳網址,請檢查 API Key");
+    const up=await fetch(url,{method:"POST",headers:{
+     "X-Goog-Upload-Offset":0,"X-Goog-Upload-Command":"upload, finalize"},body:f});
+    let file=(await up.json()).file;
+    if(!file)throw new Error("上傳失敗");
+    while(file.state=="PROCESSING"){
+     S("伺服器處理音訊中…");await new Promise(r=>setTimeout(r,3000));
+     file=await(await fetch(`${B}/v1beta/${file.name}?key=${key}`)).json();
+    }
+    if(file.state!="ACTIVE")throw new Error("檔案處理失敗:"+file.state);
+    S("轉錄中…請保持畫面開啟");
+    const res=await fetch(`${B}/v1beta/models/${$("m").value}:generateContent?key=${key}`,{
      method:"POST",headers:{"Content-Type":"application/json"},
      body:JSON.stringify({
       contents:[{parts:[
        {text:`請逐字完整轉錄這段音訊,不可摘要、省略、改寫或潤飾,保留所有語助詞、口吃與重複。語言/輸出:${$("l").value}。依說話內容自然分段,若有多位說話者請標示「說話者1:」等。只輸出逐字稿。`},
-       {inline_data:{mime_type:mime,data:b64}}]}],
+       {file_data:{mime_type:mime,file_uri:file.uri}}]}],
       generationConfig:{temperature:0,maxOutputTokens:65536}
      })});
     const j=await res.json();
     if(j.error)throw new Error(j.error.message);
     $("o").value=j.candidates[0].content.parts.map(p=>p.text).join("");
-    $("s").textContent="完成 ✅"+(j.candidates[0].finishReason=="MAX_TOKENS"?"(輸出已達上限,請分段)":"");
-   }catch(e){$("s").textContent="錯誤:"+e.message}
+    S("完成 ✅"+(j.candidates[0].finishReason=="MAX_TOKENS"?"(輸出已達上限,請分段)":""));
+    fetch(`${B}/v1beta/${file.name}?key=${key}`,{method:"DELETE"});
+   }catch(e){S("錯誤:"+e.message)}
    $("go").disabled=false;
   };
   $("cp").onclick=()=>navigator.clipboard.writeText($("o").value);
