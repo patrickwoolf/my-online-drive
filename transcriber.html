@@ -65,5 +65,5 @@
    $("go").disabled=false;
   };
   $("cp").onclick=()=>navigator.clipboard.writeText($("o").value);
-  $("dl").onclick=()=>{const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([$("o").value]));a.download="transcript.txt";a.click()};
+  $("dl").onclick=()=>{const a=document.createElement("a"),f=$("f").files[0];a.href=URL.createObjectURL(new Blob([$("o").value]));a.download=(f?f.name.replace(/\.[^.]+$/,""):"transcript")+".txt";a.click()};
   </script></body></html>
