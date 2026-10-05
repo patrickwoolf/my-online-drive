@@ -36,6 +36,9 @@
   mimeOf=f=>f.type||(/m4a$/i.test(f.name)?"audio/mp4":"audio/mpeg");
 
   $("k").value=localStorage.k||"";
+  $("m").value=localStorage.m||"gemini-flash-latest";
+  $("l").value=localStorage.l||"維持原語言";
+
 
   // 選檔時檢查是否已上傳過
   $("f").onchange=()=>{
