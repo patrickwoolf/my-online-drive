@@ -54,7 +54,7 @@
       contents:[{parts:[
        {text:`請逐字完整轉錄這段音訊,不可摘要、省略、改寫或潤飾,保留所有語助詞、口吃與重複。語言/輸出:${$("l").value}。依說話內容自然分段,若有多位說話者請標示「說話者1:」等。只輸出逐字稿。`},
        {file_data:{mime_type:mime,file_uri:file.uri}}]}],
-      generationConfig:{temperature:0.3,maxOutputTokens:65536,thinkingConfig:{thinkingBudget:0}}
+      generationConfig:{temperature:0.3,frequencyPenalty:0.3,maxOutputTokens:65536,thinkingConfig:{thinkingBudget:0}}
      })});
     const j=await res.json();
     if(j.error)throw new Error(j.error.message);
