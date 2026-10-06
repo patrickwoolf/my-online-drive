@@ -38,6 +38,9 @@
   $("k").value=localStorage.k||"";
   $("m").value=localStorage.m||"gemini-flash-latest";
   $("l").value=localStorage.l||"維持原語言";
+  $("m").oninput=()=>localStorage.m=$("m").value;
+  $("l").onchange=()=>localStorage.l=$("l").value;
+
 
 
   // 選檔時檢查是否已上傳過
