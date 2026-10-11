@@ -74,11 +74,53 @@
         #import-modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; border-radius: 8px; padding: 20px; z-index: 2000; box-shadow: 0 5px 30px rgba(0,0,0,0.3); display: none; width: 400px; }
         #import-modal textarea { width: 100%; height: 200px; margin: 10px 0; }
         .zoom-display { font-size: 11px; font-weight: bold; color: var(--primary); min-width: 35px; text-align: center; }
+
+         #portal {
+            position: fixed;
+            top: 50px;
+            right: 0;
+            width: 150px;
+            max-height: 300px;
+            overflow-y: auto;
+            background: white;
+            border: 1px solid #d0d7de;
+            border-right: none;
+            border-radius: 6px 0 0 6px;
+            padding: 8px;
+            font-size: 11px;
+            z-index: 500;
+            box-shadow: -2px 2px 8px rgba(0,0,0,0.15);
+            transform: translateX(100%);
+            transition: 0.3s;
+        }
+        #portal.open { transform: translateX(0); }
+
+        #portal-toggle {
+            position: fixed;
+            top: 50px;
+            right: 0;
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 8px 6px;
+            border-radius: 6px 0 0 6px;
+            cursor: pointer;
+            z-index: 501;
+            font-size: 14px;
+            writing-mode: vertical-rl;
+        }    
+
     </style>
 </head>
 <body>
 
 <div id="sidebar-overlay" onclick="toggleSidebar()"></div>
+<button id="portal-toggle" onclick="togglePortal()">🌐</button>
+
+<div id="portal">
+    <div style="font-weight:bold; margin-bottom:5px;">🌐 Portal</div>
+    <div id="portal-links">載入中...</div>
+</div>
 
 <div id="import-modal">
     <div style="font-weight:bold;">Excel 貼上助手</div>
@@ -198,12 +240,14 @@
     let currentZoom = 1.0;
 
     window.onload = () => {
-        const saved = localStorage.getItem('gh_token');
-        if (saved) { document.getElementById('token').value = saved; fetchFiles(); }
-        initTable();
-        setInterval(autoSave, 30000);
-        document.addEventListener('mouseup', () => { isSelecting = false; });
+    const saved = localStorage.getItem('gh_token');
+    if (saved) { document.getElementById('token').value = saved; fetchFiles(); }
+    initTable();
+    setInterval(autoSave, 30000);
+    document.addEventListener('mouseup', () => { isSelecting = false; });
+    loadPortalLinks(); // ← 新增這一行
     };
+
 
     function adjustZoom(delta) {
         currentZoom = Math.max(0.1, Math.min(4.0, currentZoom + delta));
@@ -556,6 +600,35 @@
             highlightRange();
         }
     }
+  
+  async function loadPortalLinks() {
+    try {
+        const res = await fetch(`https://api.github.com/repos/${REPO}/contents/`);
+        const files = await res.json();
+        const box = document.getElementById('portal-links');
+        box.innerHTML = "";
+        files
+            .filter(f => f.name.endsWith('.html'))
+            .forEach(f => {
+                const a = document.createElement('a');
+                a.href = `https://patrickwoolf.github.io/my-online-drive/${f.name}`;
+                a.target = "_blank";
+                a.innerText = f.name.replace('.html', '');
+                a.style.display = "block";
+                a.style.margin = "3px 0";
+                a.style.color = "var(--primary)";
+                a.style.textDecoration = "none";
+                box.appendChild(a);
+            });
+        if (!box.innerHTML) box.innerText = "無 html 檔案";
+    } catch (e) {
+        document.getElementById('portal-links').innerText = "載入失敗";
+    }
+  }
+
+  function togglePortal() {
+    document.getElementById('portal').classList.toggle('open');
+  }
 
 
 </script>
