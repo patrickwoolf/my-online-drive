@@ -233,6 +233,7 @@
 
 <script>
     const REPO = "patrickwoolf/yihong-files";
+    const PAGES_REPO = "patrickwoolf/my-online-drive"; // Portal 連結用（公開 html 頁面）
     let workbook = { "Sheet1": { data: [["","",""]], rowH: [35], colW: [100,100,100], format: "wrap", cellStyles: {} } };
     let activeSheet = "Sheet1";
     let currentFile = null, currentSha = null, lastSavedData = "";
@@ -603,7 +604,7 @@
   
   async function loadPortalLinks() {
     try {
-        const res = await fetch(`https://api.github.com/repos/${REPO}/contents/`);
+        const res = await fetch(`https://api.github.com/repos/${PAGES_REPO}/contents/`);
         const files = await res.json();
         const box = document.getElementById('portal-links');
         box.innerHTML = "";
