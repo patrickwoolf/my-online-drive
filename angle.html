@@ -254,7 +254,7 @@
     initSet();if(imgObj)drawAll();
   }
   const $=id=>document.getElementById(id);
-  const REPO='patrickwoolf/my-online-drive', BRANCH='main', DIR='assets/angle-measure';
+  const REPO='patrickwoolf/yihong-files', BRANCH='main', DIR='assets/angle-measure';
   let namePrefix='';          // 存檔用的檔名前綴
   const TOKEN=()=>localStorage.getItem('gh_token')||'';
   const ghHeaders=raw=>({'Authorization':`token ${TOKEN()}`,'Accept':raw?'application/vnd.github.raw':'application/vnd.github.v3+json'});
