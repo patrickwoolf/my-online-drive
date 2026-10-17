@@ -367,7 +367,15 @@
                 updateStatus('syncing', 'Loading...');
                 const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}?t=${Date.now()}`, { headers: getHeaders() });
                 const data = await res.json();
-                document.getElementById('editor').innerHTML = decodeURIComponent(escape(atob(data.content)));
+                let html = decodeURIComponent(escape(atob(data.content)));
+
+                // 舊圖片網址：my-online-drive → yihong-files
+                html = html.replace(/patrickwoolf\/my-online-drive/g, 'patrickwoolf/yihong-files');
+
+                document.getElementById('editor').innerHTML = html;
+
+
+                
                 currentFilePath = path; currentFileSha = data.sha;
                 document.getElementById('currentFileName').innerText = path;
                 isDirty = false; updateStatus('saved', 'Opened');
