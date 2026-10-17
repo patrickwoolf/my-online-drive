@@ -228,6 +228,8 @@
                         const img = document.getElementById(tempId);
                         if (img) {
                             img.src = d.content.download_url;
+                            img.removeAttribute('data-src');
+                            loadImagesWithToken();
                             img.classList.remove('uploading');
                             img.removeAttribute('id');
                             URL.revokeObjectURL(localUrl);
@@ -362,24 +364,66 @@
             } catch (err) { updateStatus('unsaved', 'Sync Error'); }
         }
 
+        // 取代舊 repo 網址
+        function fixImageUrls(html) {
+            return html.replace(/patrickwoolf\/my-online-drive/g, 'patrickwoolf/yihong-files');
+        }
+
+        // 用 Token 載入編輯器內所有 GitHub 圖片（支援 private repo）
+        async function loadImagesWithToken() {
+            const imgs = document.querySelectorAll('#editor img');
+            await Promise.all(Array.from(imgs).map(async (img) => {
+                const src = img.getAttribute('src') || '';
+                if (img.dataset.src) return; // 已處理過
+                const m = src.match(/^https:\/\/raw\.githubusercontent\.com\/([^/]+)\/([^/]+)\/([^/]+)\/(.+)$/);
+                if (!m) return;
+                const [, owner, repo, branch, rawPath] = m;
+
+                // 路徑先解碼再逐段編碼，中文與空格兩種格式都能處理
+                const path = decodeURIComponent(rawPath).split('/').map(encodeURIComponent).join('/');
+                img.dataset.src = src; // 記住原始網址，存檔時還原
+
+                try {
+                    const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${branch}`, {
+                        headers: { 'Authorization': `token ${document.getElementById('ghToken').value}`, 'Accept': 'application/vnd.github.v3.raw' }
+                    });
+                    if (!res.ok) { console.warn('圖片載入失敗', res.status, src); return; }
+                    const blob = await res.blob();
+                    img.src = URL.createObjectURL(blob);
+                } catch (e) { console.error('圖片載入錯誤', src, e); }
+            }));
+        }
+
+        // 取得乾淨的 HTML（把 blob 網址還原成 GitHub 網址）
+        function getCleanHTML() {
+            const clone = document.getElementById('editor').cloneNode(true);
+            clone.querySelectorAll('img[data-src]').forEach(img => {
+                img.setAttribute('src', img.dataset.src);
+                img.removeAttribute('data-src');
+            });
+            return clone.innerHTML;
+        }
+
+
         async function handleFileClick(path, url, isEditable, isPdf) {
             if (isEditable) {
-                updateStatus('syncing', 'Loading...');
-                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}?t=${Date.now()}`, { headers: getHeaders() });
-                const data = await res.json();
-                let html = decodeURIComponent(escape(atob(data.content)));
+              updateStatus('syncing', 'Loading...');
+              const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}?t=${Date.now()}`, { headers: getHeaders() });
+              const data = await res.json();
 
-                // 舊圖片網址：my-online-drive → yihong-files
-                html = html.replace(/patrickwoolf\/my-online-drive/g, 'patrickwoolf/yihong-files');
+              const html = decodeURIComponent(escape(atob(data.content)));
+              const fixedHtml = fixImageUrls(html);
 
-                document.getElementById('editor').innerHTML = html;
+              document.getElementById('editor').innerHTML = fixedHtml;
+              currentFilePath = path; currentFileSha = data.sha;
+              document.getElementById('currentFileName').innerText = path;
 
+              isDirty = (fixedHtml !== html);
+              updateStatus(isDirty ? 'unsaved' : 'saved', isDirty ? 'Link fixed' : 'Opened');
 
-                
-                currentFilePath = path; currentFileSha = data.sha;
-                document.getElementById('currentFileName').innerText = path;
-                isDirty = false; updateStatus('saved', 'Opened');
-            } else if (isPdf) {
+              loadImagesWithToken(); // 開始載入圖片
+          }
+          else if (isPdf) {
                 const res = await fetch(url);
                 const blob = await res.blob();
                 window.open(URL.createObjectURL(new Blob([blob], {type: 'application/pdf'})), '_blank');
@@ -402,7 +446,7 @@
         async function saveFile() {
             if (!currentFilePath || isSaving) return;
             isSaving = true; updateStatus('syncing', 'Saving...');
-            const content = btoa(unescape(encodeURIComponent(document.getElementById('editor').innerHTML)));
+            const content = btoa(unescape(encodeURIComponent(getCleanHTML())));
             try {
                 const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentFilePath}`, {
                     method: 'PUT', headers: getHeaders(), body: JSON.stringify({ message: 'save', content, sha: currentFileSha })
@@ -585,7 +629,7 @@
         // 核心匯出分配器 (全面修正字串跳脫語法錯誤，保證不影響初始載入)
         async function exportFile(type) {
             const editor = document.getElementById('editor');
-            let editorContent = editor.innerHTML.trim();
+            let editorContent = getCleanHTML().trim();
             const cleanCheck = editorContent.replace(/<[^>]*>/g, '').replace(/\s/g, '');
             
             if (cleanCheck === "" && !editorContent.includes('<img') && !editorContent.includes('<table')) {
