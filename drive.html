@@ -227,17 +227,21 @@
                         const d = await res.json();
                         const img = document.getElementById(tempId);
                         if (img) {
-                            img.src = d.content.download_url;
+                            // 自己組乾淨的 raw 網址（不含臨時 token）
+                            const cleanUrl = `https://raw.githubusercontent.com/${REPO}/main/${uploadPath}`;
+                    
+                            img.setAttribute('src', cleanUrl);   // 先放正式網址
                             img.removeAttribute('data-src');
-                            loadImagesWithToken();
                             img.classList.remove('uploading');
                             img.removeAttribute('id');
                             URL.revokeObjectURL(localUrl);
+                    
+                            await loadImagesWithToken();         // 等圖片載入完（會換成 blob 並記錄 data-src）
+                    
                             updateStatus('saved', '圖片已存至 assets');
-                            
                             isDirty = true;
-                            saveFile(); // 觸發 HTML 主檔案存檔
-                        }
+                            saveFile();
+                        } 
                     } else {
                         const errorData = await res.json();
                         alert("上傳失敗：" + errorData.message);
@@ -375,7 +379,7 @@
             await Promise.all(Array.from(imgs).map(async (img) => {
                 const src = img.getAttribute('src') || '';
                 if (img.dataset.src) return; // 已處理過
-                const m = src.match(/^https:\/\/raw\.githubusercontent\.com\/([^/]+)\/([^/]+)\/([^/]+)\/(.+)$/);
+                const m = src.match(/^https:\/\/raw\.githubusercontent\.com\/([^/]+)\/([^/]+)\/([^/]+)\/([^?]+)/);
                 if (!m) return;
                 const [, owner, repo, branch, rawPath] = m;
 
