@@ -370,7 +370,10 @@
 
         // 取代舊 repo 網址
         function fixImageUrls(html) {
-            return html.replace(/patrickwoolf\/my-online-drive/g, 'patrickwoolf/yihong-files');
+            return html
+                .replace(/patrickwoolf\/my-online-drive/g, 'patrickwoolf/yihong-files')
+                .replace(/\?token=[^"'&\s]*/g, '')          // 移除臨時 token
+                .replace(/\sdata-src="[^"]*"/g, '');        // 移除殘留的 data-src
         }
 
         // 用 Token 載入編輯器內所有 GitHub 圖片（支援 private repo）
@@ -401,9 +404,13 @@
         // 取得乾淨的 HTML（把 blob 網址還原成 GitHub 網址）
         function getCleanHTML() {
             const clone = document.getElementById('editor').cloneNode(true);
-            clone.querySelectorAll('img[data-src]').forEach(img => {
-                img.setAttribute('src', img.dataset.src);
+            clone.querySelectorAll('img').forEach(img => {
+                const original = img.dataset.src || img.getAttribute('src') || '';
+                // 還原原始網址，並移除臨時 token
+                const clean = original.replace(/\?token=[^"&\s]*/g, '');
+                if (!clean.startsWith('blob:')) img.setAttribute('src', clean);
                 img.removeAttribute('data-src');
+                img.removeAttribute('class');
             });
             return clone.innerHTML;
         }
