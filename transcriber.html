@@ -10,6 +10,7 @@
   </style></head><body>
   <h3>🎙 Gemini 音訊轉錄</h3>
   <input id="k" type="password" placeholder="AI Studio API Key">
+  <input id="gt" type="password" placeholder="GitHub Token (選填)">
   <input id="m" value="gemini-flash-latest">
   <select id="l">
    <option value="維持原語言">維持原語言</option>
@@ -23,6 +24,7 @@
   <textarea id="o" placeholder="結果顯示於此"></textarea>
   <button id="cp">複製</button>
   <button id="dl">下載 txt</button>
+  <button id="gh">上傳 txt 到 GitHub</button>
   <button id="rm">刪除雲端檔案</button>
   <script>
   const $=i=>document.getElementById(i),S=t=>$("s").textContent=t,
@@ -41,12 +43,40 @@
    return{text:t,removed:n-t.length};
   }
 
+  const GH_REPO="patrickwoolf/yihong-files",GH_DIR="assets/transcriber";
+  const ghTok=()=>localStorage.getItem("gh_token")||"";
+  
+  // UTF-8 字串轉 base64（支援中文）
+  const toB64=s=>{
+   const b=new TextEncoder().encode(s);let bin="";
+   for(let i=0;i<b.length;i+=0x8000)bin+=String.fromCharCode.apply(null,b.subarray(i,i+0x8000));
+   return btoa(bin);
+  };
+  
+  async function uploadToGitHub(name,text){
+   const tk=ghTok();
+   if(!tk)throw new Error("找不到 GitHub Token(localStorage 的 gh_token)");
+   const path=GH_DIR+"/"+name;
+   const url=`https://api.github.com/repos/${GH_REPO}/contents/${path.split("/").map(encodeURIComponent).join("/")}`;
+   const H={Authorization:"token "+tk,Accept:"application/vnd.github.v3+json"};
+   // 若已存在同名檔，取 sha 以便覆蓋
+   let sha;
+   const chk=await fetch(url+"?t="+Date.now(),{headers:H});
+   if(chk.ok)sha=(await chk.json()).sha;
+   const res=await fetch(url,{method:"PUT",headers:H,
+    body:JSON.stringify({message:"Add transcript: "+name,content:toB64(text),...(sha?{sha}:{})})});
+   if(!res.ok)throw new Error((await res.json().catch(()=>({}))).message||res.status);
+   return path;
+  }
+
+
   $("k").value=localStorage.k||"";
   $("m").value=localStorage.m||"gemini-flash-latest";
   $("l").value=localStorage.l||"維持原語言";
   $("m").oninput=()=>localStorage.m=$("m").value;
   $("l").onchange=()=>localStorage.l=$("l").value;
-
+  $("gt").value=localStorage.gh_token||"";
+  $("gt").oninput=()=>localStorage.gh_token=$("gt").value.trim();
 
 
   // 選檔時檢查是否已上傳過
@@ -132,6 +162,13 @@
      +(cand.finishReason=="MAX_TOKENS"?"(輸出已達上限,請分段)":""));
 
     dl();
+    try{
+      const f2=$("f").files[0];
+      const nm=(f2?f2.name.replace(/\.[^.]+$/,""):"transcript")+".txt";
+      S("完成 ✅ 正在上傳到 GitHub…");
+      const p=await uploadToGitHub(nm,cleaned);
+      S("完成 ✅ 已上傳至 "+p);
+    }catch(e){S("轉錄完成,但 GitHub 上傳失敗:"+e.message)}
    }catch(e){
     if(e.code==403||e.code==404){clrC(f);S("雲端檔案已過期或不存在,請重新按「① 上傳檔案」。("+e.message+")")}
     else S("錯誤:"+e.message);
@@ -139,6 +176,16 @@
    $("go").disabled=false;$("up").disabled=false;
   };
 
+
+  // 上傳 github
+  $("gh").onclick=async()=>{
+   const f=$("f").files[0],t=$("o").value;
+   if(!t.trim())return S("沒有內容可上傳");
+   try{
+    const p=await uploadToGitHub((f?f.name.replace(/\.[^.]+$/,""):"transcript")+".txt",t);
+    S("已上傳至 "+p);
+   }catch(e){S("上傳失敗:"+e.message)}
+  };
   // 刪除雲端檔案
   $("rm").onclick=async()=>{
    const f=$("f").files[0],key=$("k").value.trim(),c=f&&getC(f);
