@@ -401,17 +401,26 @@
             }));
         }
 
-        // 取得乾淨的 HTML（把 blob 網址還原成 GitHub 網址）
+        // 取得乾淨的 HTML（移除多餘的 style、還原 GitHub 圖片網址）
         function getCleanHTML() {
             const clone = document.getElementById('editor').cloneNode(true);
+        
+            // 1. 處理圖片：還原原始網址並清掉暫存屬性
             clone.querySelectorAll('img').forEach(img => {
                 const original = img.dataset.src || img.getAttribute('src') || '';
-                // 還原原始網址，並移除臨時 token
                 const clean = original.replace(/\?token=[^"&\s]*/g, '');
                 if (!clean.startsWith('blob:')) img.setAttribute('src', clean);
                 img.removeAttribute('data-src');
                 img.removeAttribute('class');
+                img.removeAttribute('style');
             });
+        
+            // 2. 移除其他元素的內聯 style（像 --tw-* 這種）
+            clone.querySelectorAll('*').forEach(el => {
+                if (el.tagName === 'IMG') return;
+                el.removeAttribute('style');
+            });
+        
             return clone.innerHTML;
         }
 
