@@ -534,36 +534,9 @@
     function renderTabs() { const bar = document.getElementById('tab-bar'); bar.querySelectorAll('.tab').forEach(t => t.remove()); Object.keys(workbook).forEach(name => { const div = document.createElement('div'); div.className = `tab ${name === activeSheet ? 'active' : ''}`; div.innerText = name; div.onclick = () => { activeSheet = name; initTable(); }; bar.insertBefore(div, bar.firstChild); }); }
     async function fetchFiles() { const token = document.getElementById('token').value; if(!token) return; localStorage.setItem('gh_token', token); const res = await fetch(`https://api.github.com/repos/${REPO}/contents/`, { headers: { 'Authorization': `token ${token}` } }); const files = await res.json(); const list = document.getElementById('file-items'); list.innerHTML = ""; files.filter(f => f.name.endsWith('.json')).forEach(f => { const d = document.createElement('div'); d.className = "file-item"; d.innerText = f.name; d.onclick = () => loadFile(f.name); list.appendChild(d); }); }
     async function loadFile(name) { toggleSidebar(); document.getElementById('status').innerText = "Loading..."; const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${name}`, { headers: { 'Authorization': `token ${document.getElementById('token').value}` } }); const json = await res.json(); currentFile = name; currentSha = json.sha; const content = JSON.parse(pako.ungzip(new Uint8Array(atob(json.content).split('').map(c => c.charCodeAt(0))), {to:'string'})); workbook = content; activeSheet = Object.keys(workbook)[0]; lastSavedData = JSON.stringify(workbook); initTable(); document.getElementById('status').innerText = name; }
-    async function saveToCloud() {
-        const st = document.getElementById('status');
-        st.style.color = '';
-        st.innerText = '💾 儲存中…';
-        try {
-            const dataStr = JSON.stringify(workbook);
-            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentFile}`, {
-                method: 'PUT',
-                headers: { 'Authorization': `token ${document.getElementById('token').value}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: "AutoSave", content: btoa(String.fromCharCode.apply(null, pako.gzip(dataStr))), sha: currentSha })
-            });
-            const json = await res.json();
-            if (!json.content) throw new Error(json.message || res.status);
-            currentSha = json.content.sha;
-            lastSavedData = dataStr;
-            st.innerText = `✅ 已儲存 ${new Date().toLocaleTimeString()}`;
-            st.style.color = '#7ee787';
-        } catch (e) {
-            st.innerText = '❌ 儲存失敗:' + e.message;
-            st.style.color = '#ff7b72';
-        }
-    }
-    async function autoSave() {
-        if (currentFile && JSON.stringify(workbook) !== lastSavedData) await saveToCloud();
-    }
-    function manualSave() {
-        if (!currentFile) { document.getElementById('status').innerText = '⚠️ 尚未開啟檔案'; return; }
-        saveToCloud();
-    }
-
+    async function saveToCloud() { const dataStr = JSON.stringify(workbook); const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentFile}`, { method: 'PUT', headers: { 'Authorization': `token ${document.getElementById('token').value}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ message: "AutoSave", content: btoa(String.fromCharCode.apply(null, pako.gzip(dataStr))), sha: currentSha }) }); const json = await res.json(); if(json.content) { currentSha = json.content.sha; lastSavedData = dataStr; } }
+    async function autoSave() { if (currentFile && JSON.stringify(workbook) !== lastSavedData) { await saveToCloud(); document.getElementById('status').innerText = currentFile; } }
+    function manualSave() { if(currentFile) saveToCloud(); }
     function addNewSheet() { const name = prompt("分頁名稱:"); if (name && !workbook[name]) { pushHistory(); workbook[name] = { data: [["",""]], rowH: [35], colW: [100,100], format: "wrap", cellStyles: {} }; activeSheet = name; initTable(); } }
     function createNewFile() { let name = prompt("新檔名:"); if (!name) return; if (!name.endsWith('.json')) name += '.json'; currentFile = name; workbook = { "Sheet1": { data: [["",""]], rowH:[35], colW:[100,100], format: "wrap", cellStyles: {} } }; saveToCloud().then(fetchFiles); }
 
@@ -657,79 +630,6 @@
   function togglePortal() {
     document.getElementById('portal').classList.toggle('open');
   }
-
-  // 按鍵記錄：用來判斷 Shift(插入行) / Alt(插入列)
-  let pk = {};
-  document.addEventListener('keydown', e => { pk = {s: e.shiftKey, a: e.altKey}; }, true);
-
-  // 多格複製：輸出 TSV，含換行/Tab/引號的格子用 "..." 包起來
-  document.addEventListener('copy', e => {
-      const r = getSelectedRange();
-      if (!r || (r.rMin === r.rMax && r.cMin === r.cMax)) return;
-      const q = v => { v = String(v); return /[\t\r\n"]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
-      const tsv = workbook[activeSheet].data.slice(r.rMin, r.rMax + 1)
-          .map(row => row.slice(r.cMin, r.cMax + 1).map(q).join('\t')).join('\n');
-      const sh = workbook[activeSheet], st = {};
-      for (let i = r.rMin; i <= r.rMax; i++) for (let j = r.cMin; j <= r.cMax; j++) {
-          const k = sh.cellStyles && sh.cellStyles[`${i}-${j}`];
-          if (k) st[`${i - r.rMin}-${j - r.cMin}`] = k;
-      }
-      localStorage.clipMeta = JSON.stringify({
-          t: tsv,
-          h: sh.rowH.slice(r.rMin, r.rMax + 1),
-          w: sh.colW.slice(r.cMin, r.cMax + 1),
-          st
-      });
-      e.clipboardData.setData('text/plain', tsv);
-      e.preventDefault();
-  });
-
-  // 多格貼上：支援引號內換行；Shift=插入行、Alt=插入列
-  document.addEventListener('paste', e => {
-      const t = (e.clipboardData.getData('text/plain') || '').replace(/\r?\n$/, '');
-      if (!/[\t\n]/.test(t)) return;
-      e.preventDefault();
-      // 解析 TSV（支援引號）
-      const R = [[]]; let v = '', q = false;
-      for (let i = 0; i < t.length; i++) {
-          const c = t[i];
-          if (q) { if (c === '"') { if (t[i+1] === '"') { v += '"'; i++; } else q = false; } else v += c; }
-          else if (c === '"' && !v) q = true;
-          else if (c === '\t') { R.at(-1).push(v); v = ''; }
-          else if (c === '\n' || c === '\r') { if (c === '\r' && t[i+1] === '\n') i++; R.at(-1).push(v); v = ''; R.push([]); }
-          else v += c;
-      }
-      R.at(-1).push(v);
-
-      const r = getSelectedRange();
-      const f = getFocus() || (r ? {r: r.rMin, c: r.cMin} : {r: 0, c: 0});
-      if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); // 先讓編輯格寫回舊值
-      pushHistory();
-      const s = workbook[activeSheet];
-      const w = Math.max(...R.map(x => x.length));
-      if (pk.s) { // 插入新行
-          R.forEach((_, i) => { s.data.splice(f.r, 0, new Array(s.data[0].length).fill("")); s.rowH.splice(f.r, 0, 35); });
-      } else if (pk.a) { // 插入新列
-          for (let j = 0; j < w; j++) { s.data.forEach(row => row.splice(f.c, 0, "")); s.colW.splice(f.c, 0, 100); }
-      }
-      R.forEach((line, i) => line.forEach((val, j) => {
-          const tr = f.r + i, tc = f.c + j;
-          while (tr >= s.data.length) { s.data.push(new Array(s.data[0].length).fill("")); s.rowH.push(35); }
-          while (tc >= s.data[0].length) { s.data.forEach(row => row.push("")); s.colW.push(100); }
-          s.data[tr][tc] = val;
-      }));
-      let m; try { m = JSON.parse(localStorage.clipMeta); } catch (_) {}
-      if (m && m.t.replace(/\r\n/g, '\n') === t.replace(/\r\n/g, '\n')) {
-          m.h.forEach((h, i) => s.rowH[f.r + i] = h);
-          m.w.forEach((w, j) => s.colW[f.c + j] = w);
-          s.cellStyles = s.cellStyles || {};
-          Object.entries(m.st).forEach(([k, v]) => {
-              const [a, b] = k.split('-').map(Number);
-              s.cellStyles[`${f.r + a}-${f.c + b}`] = v;
-          });
-      }
-      initTable();
-  });
 
 
 </script>
